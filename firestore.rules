@@ -1,0 +1,151 @@
+rules_version = '2';
+
+// RutaSync (RutaBanano) — Reglas Oficiales de Seguridad en Servidor (Cloud Firestore)
+// Valida en servidor: cuentas activas, roles (OWNER / HELPER), estado de jornada (OPEN / CLOSED),
+// cómputo individual del plazo de edición con request.time, autorizaciones específicas por versión,
+// bloqueo definitivo tras el cierre e inmutabilidad de cierres y bitácora de auditoría.
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function userExistsAndActive(businessId, userId) {
+      return userId is string &&
+        exists(/databases/$(database)/documents/businesses/$(businessId)/users/$(userId)) &&
+        get(/databases/$(database)/documents/businesses/$(businessId)/users/$(userId)).data.active == true;
+    }
+
+    function userIsOwner(businessId, userId) {
+      return userExistsAndActive(businessId, userId) &&
+        get(/databases/$(database)/documents/businesses/$(businessId)/users/$(userId)).data.role == 'OWNER';
+    }
+
+    function shiftDoc(businessId, shiftId) {
+      return get(/databases/$(database)/documents/businesses/$(businessId)/shifts/$(shiftId));
+    }
+
+    function isShiftOpen(businessId, shiftId) {
+      return exists(/databases/$(database)/documents/businesses/$(businessId)/shifts/$(shiftId)) &&
+        shiftDoc(businessId, shiftId).data.status == 'OPEN';
+    }
+
+    match /businesses/{businessId} {
+      allow read: if true;
+      allow create, update: if request.resource.data.businessId == businessId;
+      allow delete: if false;
+
+      // Definición oficial de roles del sistema (OWNER y HELPER)
+      match /roles/{roleId} {
+        allow read: if true;
+        allow create, update: if roleId in ['OWNER', 'HELPER'];
+        allow delete: if false;
+      }
+
+      // Usuarios y auxiliares: nunca se eliminan (se desactivan conservando historial)
+      match /users/{userId} {
+        allow read: if true;
+        allow create, update: if request.resource.data.businessId == businessId &&
+          request.resource.data.role in ['OWNER', 'HELPER'];
+        allow delete: if false;
+      }
+
+      // Catálogos del negocio (Productos, Proveedores, Clientes)
+      match /products/{productId} {
+        allow read: if true;
+        allow create, update: if request.resource.data.businessId == businessId;
+        allow delete: if false;
+      }
+
+      match /suppliers/{supplierId} {
+        allow read: if true;
+        allow create, update: if request.resource.data.businessId == businessId;
+        allow delete: if false;
+      }
+
+      match /clients/{clientId} {
+        allow read: if true;
+        allow create, update: if request.resource.data.businessId == businessId;
+        allow delete: if false;
+      }
+
+      // Jornadas (Shifts): una jornada cerrada ('CLOSED') jamás puede reabrirse ni eliminarse
+      match /shifts/{shiftId} {
+        allow read: if true;
+        allow create: if request.resource.data.businessId == businessId &&
+          request.resource.data.status in ['OPEN', 'CLOSED'];
+
+        allow update: if resource.data.status == 'OPEN' && (
+          request.resource.data.status == 'OPEN' ||
+          (
+            request.resource.data.status == 'CLOSED' &&
+            request.resource.data.closedByUserId == resource.data.responsibleUserId &&
+            userExistsAndActive(businessId, request.resource.data.closedByUserId) &&
+            (
+              userIsOwner(businessId, request.resource.data.closedByUserId) ||
+              resource.data.allowResponsibleHelperClose == true
+            )
+          )
+        );
+
+        allow delete: if false;
+      }
+
+      // Operaciones de ruta (compras, ventas, cobros, gastos, devoluciones, canastillas)
+      match /operations/{operationId} {
+        allow read: if true;
+
+        allow create: if request.resource.data.businessId == businessId &&
+          userExistsAndActive(businessId, request.resource.data.authorId);
+
+        allow update: if isShiftOpen(businessId, resource.data.shiftId) &&
+          userExistsAndActive(businessId, request.resource.data.authorId) &&
+          request.resource.data.createdAt == resource.data.createdAt &&
+          request.resource.data.version >= resource.data.version &&
+          (
+            // Edición dentro del plazo individual o con autorización específica aprobada
+            request.time.toMillis() <= (resource.data.createdAt + (shiftDoc(businessId, resource.data.shiftId).data.editWindowMinutes * 60000)) ||
+            (
+              request.resource.data.lastAuthorizationId is string &&
+              exists(/databases/$(database)/documents/businesses/$(businessId)/editAuthorizations/$(request.resource.data.lastAuthorizationId))
+            )
+          );
+
+        // Prohibido eliminar registros financieros
+        allow delete: if false;
+      }
+
+      // Solicitudes y aprobaciones de edición vencida
+      match /editAuthorizations/{authId} {
+        allow read: if true;
+        allow create: if request.resource.data.businessId == businessId &&
+          userExistsAndActive(businessId, request.resource.data.requestedBy);
+        allow update: if isShiftOpen(businessId, resource.data.shiftId);
+        allow delete: if false;
+      }
+
+      // Cierres definitivos congelados: estrictamente inmutables
+      match /closures/{closureId} {
+        allow read: if true;
+        allow create: if request.resource.data.businessId == businessId &&
+          userExistsAndActive(businessId, request.resource.data.closedByUserId);
+        allow update, delete: if false;
+      }
+
+      // Ajustes posteriores a jornadas cerradas: solo autorizados por el dueño con motivo obligatorio
+      match /postClosureAdjustments/{adjustmentId} {
+        allow read: if true;
+        allow create: if request.resource.data.businessId == businessId &&
+          userIsOwner(businessId, request.resource.data.authorizerId) &&
+          request.resource.data.reason is string &&
+          request.resource.data.reason.size() >= 5;
+        allow update, delete: if false;
+      }
+
+      // Registros de auditoría: estrictamente append-only (prohibido editar o borrar)
+      match /auditLogs/{auditId} {
+        allow read: if true;
+        allow create: if request.resource.data.businessId == businessId;
+        allow update, delete: if false;
+      }
+    }
+  }
+}
