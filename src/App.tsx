@@ -154,7 +154,7 @@ export function App() {
   };
 
   useEffect(() => {
-    coreService.initializeFromStorage().then((loaded) => {
+    coreService.initializeFromStorage().then(async (loaded) => {
       setState({ ...loaded });
       const activeShift = coreService.getActiveShiftForUnit();
       if (activeShift) {
@@ -165,10 +165,17 @@ export function App() {
         setCountedTransferInput(preview.financials.expectedTransfersInBank);
       }
       setIsHydrating(false);
-      // Sincronizar colecciones y estado inicial con Cloud Firestore (rutasync-banano)
-      coreService.firebaseAdapter
-        .syncInitialCollectionsAndRoles(loaded)
-        .catch(() => {});
+
+      // Hidratar y sincronizar todas las colecciones con Cloud Firestore (rutasync-banano)
+      try {
+        const remote = await coreService.pullFromFirebase();
+        setState({ ...remote });
+        await coreService.firebaseAdapter.syncInitialCollectionsAndRoles(
+          coreService.getState()
+        );
+      } catch {
+        // Si inicia sin cobertura móvil, continúa operando con IndexedDB local
+      }
     });
 
     runAll15MandatoryAcceptanceTests().then((res) => {
@@ -2343,6 +2350,10 @@ export function App() {
         syncConflicts={state.syncConflicts}
         onForceSync={async () => {
           await coreService.processSyncQueue();
+          await coreService.firebaseAdapter.syncInitialCollectionsAndRoles(
+            coreService.getState()
+          );
+          await coreService.pullFromFirebase();
           refreshState();
         }}
         onExportBackup={() =>

@@ -1778,6 +1778,39 @@ export class RutaBananoCoreService {
       syncedCount += 1;
     }
 
+    // Sincronizar también el último registro de auditoría y saldos de clientes/proveedores en segundo plano
+    const latestAudit = this.state.auditLogs[0];
+    if (latestAudit) {
+      this.firebaseAdapter
+        .upsertEntityBothLevels(
+          this.state.config.businessId,
+          'auditLogs',
+          latestAudit.id,
+          latestAudit as unknown as Record<string, unknown>
+        )
+        .catch(() => {});
+    }
+    for (const c of this.state.clients) {
+      this.firebaseAdapter
+        .upsertEntityBothLevels(
+          this.state.config.businessId,
+          'clients',
+          c.id,
+          c as unknown as Record<string, unknown>
+        )
+        .catch(() => {});
+    }
+    for (const s of this.state.suppliers) {
+      this.firebaseAdapter
+        .upsertEntityBothLevels(
+          this.state.config.businessId,
+          'suppliers',
+          s.id,
+          s as unknown as Record<string, unknown>
+        )
+        .catch(() => {});
+    }
+
     await this.storage.saveState(this.state);
 
     return {
@@ -1785,6 +1818,19 @@ export class RutaBananoCoreService {
       pendingCount: this.state.syncQueue.filter((q) => q.status === 'PENDING').length,
       conflictCount: this.state.syncConflicts.filter((c) => !c.resolved).length,
     };
+  }
+
+  /**
+   * Hidrata el estado local desde las colecciones remotas en Cloud Firestore (rutasync-banano).
+   */
+  public async pullFromFirebase(): Promise<RutaBananoPersistedState> {
+    if (!this.isOnline) return this.state;
+    const remote = await this.firebaseAdapter.fetchRemoteStateFromFirestore(this.state);
+    if (remote) {
+      this.state = remote;
+      await this.storage.saveState(this.state);
+    }
+    return this.getState();
   }
 
   /**
