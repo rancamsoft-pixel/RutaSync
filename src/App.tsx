@@ -1334,33 +1334,65 @@ export function App() {
                               </div>
 
                               <div>
-                                <label className="block text-sm font-semibold text-slate-700 mb-1">
+                                <label className="block text-sm font-semibold text-slate-700 mb-1.5">
                                   Tipo de compensación del proveedor
                                 </label>
-                                <select
-                                  disabled={activeShift.status === 'CLOSED'}
-                                  className="w-full min-h-[48px] px-3 py-2 rounded-xl border border-slate-300 bg-white text-base font-medium text-slate-900 focus:outline-none focus:ring-2 focus:ring-green-600"
-                                  value={currentClass.returnCompensationType}
-                                  onChange={(e) =>
-                                    updateItemClass({
-                                      returnCompensationType: e.target
-                                        .value as SupplierCompensationType,
-                                    })
-                                  }
-                                >
-                                  <option value="PENDING_COMPENSATION">
-                                    Pendiente de compensación (no entra a caja)
-                                  </option>
-                                  <option value="CREDIT_BALANCE">
-                                    Saldo a favor con proveedor (no entra a caja)
-                                  </option>
-                                  <option value="PRODUCT_EXCHANGE">
-                                    Cambio por otro producto
-                                  </option>
-                                  <option value="CASH_REFUND_RECEIVED">
-                                    Reembolso en efectivo recibido
-                                  </option>
-                                </select>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                  {(
+                                    [
+                                      {
+                                        id: 'PENDING_COMPENSATION',
+                                        label: 'Pendiente de compensar',
+                                        sub: 'No entra a caja hoy',
+                                      },
+                                      {
+                                        id: 'CREDIT_BALANCE',
+                                        label: 'Saldo a favor nuestro',
+                                        sub: 'No entra a caja hoy',
+                                      },
+                                      {
+                                        id: 'PRODUCT_EXCHANGE',
+                                        label: 'Cambio por producto',
+                                        sub: 'Reposición física',
+                                      },
+                                      {
+                                        id: 'CASH_REFUND_RECEIVED',
+                                        label: 'Efectivo recibido',
+                                        sub: 'Suma a caja hoy',
+                                      },
+                                    ] as const
+                                  ).map((opt) => {
+                                    const selected =
+                                      currentClass.returnCompensationType ===
+                                      opt.id;
+                                    return (
+                                      <button
+                                        key={opt.id}
+                                        type="button"
+                                        disabled={
+                                          activeShift.status === 'CLOSED'
+                                        }
+                                        onClick={() =>
+                                          updateItemClass({
+                                            returnCompensationType: opt.id,
+                                          })
+                                        }
+                                        className={`p-2.5 rounded-xl border text-left transition-colors cursor-pointer ${
+                                          selected
+                                            ? 'bg-green-50 border-green-600 text-green-950 ring-1 ring-green-600'
+                                            : 'bg-white border-slate-200 hover:bg-slate-50 text-slate-800'
+                                        }`}
+                                      >
+                                        <div className="text-sm font-bold leading-snug">
+                                          {opt.label}
+                                        </div>
+                                        <div className="text-xs text-slate-500">
+                                          {opt.sub}
+                                        </div>
+                                      </button>
+                                    );
+                                  })}
+                                </div>
                               </div>
                             </div>
                           )}
@@ -2143,20 +2175,33 @@ export function App() {
                   >
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       <div>
-                        <label className="block text-sm font-semibold text-slate-700 mb-1">
+                        <label className="block text-sm font-semibold text-slate-700 mb-1.5">
                           Cierre histórico de referencia
                         </label>
-                        <select
-                          className="w-full min-h-[48px] px-3 py-2 rounded-xl border border-slate-300 bg-white text-base text-slate-900"
-                          value={adjClosureId || state.closures[0].closureId}
-                          onChange={(e) => setAdjClosureId(e.target.value)}
-                        >
-                          {state.closures.map((c) => (
-                            <option key={c.closureId} value={c.closureId}>
-                              {c.closureId} ({c.operatingDate})
-                            </option>
-                          ))}
-                        </select>
+                        <div className="flex flex-col gap-2">
+                          {state.closures.map((c) => {
+                            const selected =
+                              (adjClosureId || state.closures[0].closureId) ===
+                              c.closureId;
+                            return (
+                              <button
+                                key={c.closureId}
+                                type="button"
+                                onClick={() => setAdjClosureId(c.closureId)}
+                                className={`min-h-[46px] px-3.5 py-2 rounded-xl border text-left text-sm font-semibold flex items-center justify-between gap-2 transition-colors cursor-pointer ${
+                                  selected
+                                    ? 'bg-green-50 border-green-600 text-green-950 ring-1 ring-green-600'
+                                    : 'bg-white border-slate-300 hover:bg-slate-50 text-slate-800'
+                                }`}
+                              >
+                                <span className="truncate">{c.closureId}</span>
+                                <span className="text-xs text-slate-500 shrink-0">
+                                  {c.operatingDate}
+                                </span>
+                              </button>
+                            );
+                          })}
+                        </div>
                       </div>
 
                       <div>
@@ -2393,32 +2438,46 @@ export function App() {
             newOpModalType === 'PURCHASE' ||
             newOpModalType === 'SUPPLIER_RETURN') && (
             <div>
-              <label className="block text-base font-bold text-slate-800 mb-1.5">
+              <label className="block text-sm sm:text-base font-bold text-slate-800 mb-1.5">
                 Producto
               </label>
-              <select
-                className="w-full min-h-[52px] px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white text-base font-medium text-slate-900 focus:outline-none focus:ring-2 focus:ring-green-600"
-                value={opProductId}
-                onChange={(e) => {
-                  const prod = state.products.find(
-                    (p) => p.id === e.target.value
+              <div className="grid grid-cols-1 gap-2">
+                {state.products.map((p) => {
+                  const selected = opProductId === p.id;
+                  const refPrice =
+                    newOpModalType === 'PURCHASE'
+                      ? p.defaultCostPrice
+                      : p.defaultSalePrice;
+                  return (
+                    <button
+                      key={p.id}
+                      type="button"
+                      onClick={() => {
+                        setOpProductId(p.id);
+                        setOpUnitPrice(refPrice);
+                      }}
+                      className={`w-full min-h-[48px] px-3.5 py-2.5 rounded-xl border text-left flex items-center justify-between gap-2 transition-colors cursor-pointer ${
+                        selected
+                          ? 'bg-green-50 border-green-600 text-green-950 ring-1 ring-green-600'
+                          : 'bg-white border-slate-300 hover:bg-slate-50 text-slate-800'
+                      }`}
+                    >
+                      <span className="text-sm sm:text-base font-semibold truncate">
+                        {p.name}
+                      </span>
+                      <span
+                        className={`text-xs font-bold px-2 py-0.5 rounded-md shrink-0 tabular-nums ${
+                          selected
+                            ? 'bg-green-700 text-white'
+                            : 'bg-slate-100 text-slate-700'
+                        }`}
+                      >
+                        {formatCOP(refPrice)} / {p.unit}
+                      </span>
+                    </button>
                   );
-                  setOpProductId(e.target.value);
-                  if (prod) {
-                    setOpUnitPrice(
-                      newOpModalType === 'PURCHASE'
-                        ? prod.defaultCostPrice
-                        : prod.defaultSalePrice
-                    );
-                  }
-                }}
-              >
-                {state.products.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name}
-                  </option>
-                ))}
-              </select>
+                })}
+              </div>
             </div>
           )}
 
@@ -2426,41 +2485,70 @@ export function App() {
             newOpModalType === 'COLLECTION_PAST_DEBT' ||
             newOpModalType === 'CRATE_MOVEMENT') && (
             <div>
-              <label className="block text-base font-bold text-slate-800 mb-1.5">
+              <label className="block text-sm sm:text-base font-bold text-slate-800 mb-1.5">
                 Cliente
               </label>
-              <select
-                className="w-full min-h-[52px] px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white text-base font-medium text-slate-900 focus:outline-none focus:ring-2 focus:ring-green-600"
-                value={opClientId}
-                onChange={(e) => setOpClientId(e.target.value)}
-              >
-                {state.clients.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name} (Deuda anterior:{' '}
-                    {formatCOP(c.historicalPrincipalDebt)})
-                  </option>
-                ))}
-              </select>
+              <div className="grid grid-cols-1 gap-2">
+                {state.clients.map((c) => {
+                  const selected = opClientId === c.id;
+                  return (
+                    <button
+                      key={c.id}
+                      type="button"
+                      onClick={() => setOpClientId(c.id)}
+                      className={`w-full min-h-[48px] px-3.5 py-2.5 rounded-xl border text-left flex items-center justify-between gap-2 transition-colors cursor-pointer ${
+                        selected
+                          ? 'bg-green-50 border-green-600 text-green-950 ring-1 ring-green-600'
+                          : 'bg-white border-slate-300 hover:bg-slate-50 text-slate-800'
+                      }`}
+                    >
+                      <span className="text-sm sm:text-base font-semibold truncate">
+                        {c.name}
+                      </span>
+                      <span
+                        className={`text-xs font-bold px-2 py-0.5 rounded-md shrink-0 tabular-nums ${
+                          c.historicalPrincipalDebt > 0
+                            ? 'bg-amber-100 text-amber-900'
+                            : 'bg-slate-100 text-slate-600'
+                        }`}
+                      >
+                        Deuda: {formatCOP(c.historicalPrincipalDebt)}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
             </div>
           )}
 
           {(newOpModalType === 'PURCHASE' ||
             newOpModalType === 'SUPPLIER_RETURN') && (
             <div>
-              <label className="block text-base font-bold text-slate-800 mb-1.5">
+              <label className="block text-sm sm:text-base font-bold text-slate-800 mb-1.5">
                 Proveedor
               </label>
-              <select
-                className="w-full min-h-[52px] px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white text-base font-medium text-slate-900 focus:outline-none focus:ring-2 focus:ring-green-600"
-                value={opSupplierId}
-                onChange={(e) => setOpSupplierId(e.target.value)}
-              >
-                {state.suppliers.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.name}
-                  </option>
-                ))}
-              </select>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {state.suppliers.map((s) => {
+                  const selected = opSupplierId === s.id;
+                  return (
+                    <button
+                      key={s.id}
+                      type="button"
+                      onClick={() => setOpSupplierId(s.id)}
+                      className={`w-full min-h-[48px] px-3.5 py-2.5 rounded-xl border text-left transition-colors cursor-pointer ${
+                        selected
+                          ? 'bg-green-50 border-green-600 text-green-950 ring-1 ring-green-600'
+                          : 'bg-white border-slate-300 hover:bg-slate-50 text-slate-800'
+                      }`}
+                    >
+                      <div className="text-sm font-bold truncate">{s.name}</div>
+                      <div className="text-xs text-slate-500">
+                        Tel: {s.phone}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
             </div>
           )}
 
@@ -2468,34 +2556,34 @@ export function App() {
             <>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-base font-bold text-slate-800 mb-1.5">
+                  <label className="block text-sm sm:text-base font-bold text-slate-800 mb-1.5">
                     Cantidad
                   </label>
                   <input
                     type="number"
                     inputMode="numeric"
                     min={1}
-                    className="w-full min-h-[52px] px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white text-xl font-bold text-slate-900 tabular-nums focus:outline-none focus:ring-2 focus:ring-green-600"
+                    className="w-full min-h-[50px] px-3.5 py-2 rounded-xl border border-slate-300 bg-white text-xl font-bold text-slate-900 tabular-nums focus:outline-none focus:ring-2 focus:ring-green-600"
                     value={opQuantity}
                     onChange={(e) => setOpQuantity(Number(e.target.value))}
                   />
                 </div>
                 <div>
-                  <label className="block text-base font-bold text-slate-800 mb-1.5">
+                  <label className="block text-sm sm:text-base font-bold text-slate-800 mb-1.5">
                     Precio unitario ($)
                   </label>
                   <input
                     type="number"
                     inputMode="decimal"
                     min={0}
-                    className="w-full min-h-[52px] px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white text-xl font-bold text-slate-900 tabular-nums focus:outline-none focus:ring-2 focus:ring-green-600"
+                    className="w-full min-h-[50px] px-3.5 py-2 rounded-xl border border-slate-300 bg-white text-xl font-bold text-slate-900 tabular-nums focus:outline-none focus:ring-2 focus:ring-green-600"
                     value={opUnitPrice}
                     onChange={(e) => setOpUnitPrice(Number(e.target.value))}
                   />
                 </div>
               </div>
 
-              <div className="p-3.5 rounded-xl bg-green-50 border border-green-200 flex justify-between items-center">
+              <div className="p-3 rounded-xl bg-green-50 border border-green-200 flex justify-between items-center">
                 <span className="text-sm font-semibold text-green-950">
                   Total de la operación:
                 </span>
@@ -2509,33 +2597,54 @@ export function App() {
           {newOpModalType === 'COLLECTION_PAST_DEBT' && (
             <>
               <div>
-                <label className="block text-base font-bold text-slate-800 mb-1.5">
+                <label className="block text-sm sm:text-base font-bold text-slate-800 mb-1.5">
                   Origen de la deuda que estás cobrando
                 </label>
-                <select
-                  className="w-full min-h-[52px] px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white text-base font-medium text-slate-900 focus:outline-none focus:ring-2 focus:ring-green-600"
-                  value={opCollectionKind}
-                  onChange={(e) =>
-                    setOpCollectionKind(e.target.value as 'CURRENT' | 'PAST')
-                  }
-                >
-                  <option value="PAST">
-                    Deuda de jornadas anteriores (no cuenta como venta nueva)
-                  </option>
-                  <option value="CURRENT">Abono a venta fiada de hoy</option>
-                </select>
+                <div className="grid grid-cols-1 gap-2">
+                  {(
+                    [
+                      {
+                        id: 'PAST',
+                        title: 'Deuda de jornadas anteriores',
+                        sub: 'No se suma como venta nueva ni utilidad nueva',
+                      },
+                      {
+                        id: 'CURRENT',
+                        title: 'Abono a venta fiada de hoy',
+                        sub: 'Reduce el saldo pendiente de la jornada actual',
+                      },
+                    ] as const
+                  ).map((opt) => {
+                    const selected = opCollectionKind === opt.id;
+                    return (
+                      <button
+                        key={opt.id}
+                        type="button"
+                        onClick={() => setOpCollectionKind(opt.id)}
+                        className={`w-full p-3 rounded-xl border text-left transition-colors cursor-pointer ${
+                          selected
+                            ? 'bg-green-50 border-green-600 text-green-950 ring-1 ring-green-600'
+                            : 'bg-white border-slate-300 hover:bg-slate-50 text-slate-800'
+                        }`}
+                      >
+                        <div className="text-sm font-bold">{opt.title}</div>
+                        <div className="text-xs text-slate-600">{opt.sub}</div>
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-base font-bold text-slate-800 mb-1.5">
+                  <label className="block text-sm sm:text-base font-bold text-slate-800 mb-1.5">
                     Abono a capital ($)
                   </label>
                   <input
                     type="number"
                     inputMode="decimal"
                     min={0}
-                    className="w-full min-h-[52px] px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white text-xl font-bold text-slate-900 tabular-nums focus:outline-none focus:ring-2 focus:ring-green-600"
+                    className="w-full min-h-[50px] px-3.5 py-2 rounded-xl border border-slate-300 bg-white text-xl font-bold text-slate-900 tabular-nums focus:outline-none focus:ring-2 focus:ring-green-600"
                     value={opCollectionAmount}
                     onChange={(e) =>
                       setOpCollectionAmount(Number(e.target.value))
@@ -2545,14 +2654,14 @@ export function App() {
 
                 {opCollectionKind === 'PAST' && (
                   <div>
-                    <label className="block text-base font-bold text-slate-800 mb-1.5">
+                    <label className="block text-sm sm:text-base font-bold text-slate-800 mb-1.5">
                       Interés acordado cobrado ($)
                     </label>
                     <input
                       type="number"
                       inputMode="decimal"
                       min={0}
-                      className="w-full min-h-[52px] px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white text-xl font-bold text-slate-900 tabular-nums focus:outline-none focus:ring-2 focus:ring-green-600"
+                      className="w-full min-h-[50px] px-3.5 py-2 rounded-xl border border-slate-300 bg-white text-xl font-bold text-slate-900 tabular-nums focus:outline-none focus:ring-2 focus:ring-green-600"
                       value={opCollectionInterest}
                       onChange={(e) =>
                         setOpCollectionInterest(Number(e.target.value))
@@ -2567,34 +2676,46 @@ export function App() {
           {newOpModalType === 'EXPENSE' && (
             <>
               <div>
-                <label className="block text-base font-bold text-slate-800 mb-1.5">
+                <label className="block text-sm sm:text-base font-bold text-slate-800 mb-1.5">
                   Categoría del gasto
                 </label>
-                <select
-                  className="w-full min-h-[52px] px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white text-base font-medium text-slate-900 focus:outline-none focus:ring-2 focus:ring-green-600"
-                  value={opExpenseCategory}
-                  onChange={(e) =>
-                    setOpExpenseCategory(e.target.value as ExpenseCategory)
-                  }
-                >
-                  <option value="FUEL">Combustible / ACPM</option>
-                  <option value="TOLL_PARKING">Peaje o Parqueadero</option>
-                  <option value="FOOD">Alimentación</option>
-                  <option value="PERSONNEL_PAYMENT">
-                    Pago de ayudante / personal
-                  </option>
-                  <option value="OTHER">Otro gasto operativo</option>
-                </select>
+                <div className="grid grid-cols-2 gap-2">
+                  {(
+                    [
+                      { id: 'FUEL', label: 'Combustible / ACPM' },
+                      { id: 'TOLL_PARKING', label: 'Peaje / Parqueo' },
+                      { id: 'FOOD', label: 'Alimentación' },
+                      { id: 'PERSONNEL_PAYMENT', label: 'Pago Ayudante' },
+                      { id: 'OTHER', label: 'Otro gasto' },
+                    ] as const
+                  ).map((cat) => {
+                    const selected = opExpenseCategory === cat.id;
+                    return (
+                      <button
+                        key={cat.id}
+                        type="button"
+                        onClick={() => setOpExpenseCategory(cat.id)}
+                        className={`min-h-[46px] px-3 py-2 rounded-xl border text-left text-sm font-bold transition-colors cursor-pointer ${
+                          selected
+                            ? 'bg-green-50 border-green-600 text-green-950 ring-1 ring-green-600'
+                            : 'bg-white border-slate-300 hover:bg-slate-50 text-slate-800'
+                        }`}
+                      >
+                        {cat.label}
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
               <div>
-                <label className="block text-base font-bold text-slate-800 mb-1.5">
+                <label className="block text-sm sm:text-base font-bold text-slate-800 mb-1.5">
                   Valor pagado ($)
                 </label>
                 <input
                   type="number"
                   inputMode="decimal"
                   min={1}
-                  className="w-full min-h-[52px] px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white text-xl font-bold text-slate-900 tabular-nums focus:outline-none focus:ring-2 focus:ring-green-600"
+                  className="w-full min-h-[50px] px-3.5 py-2 rounded-xl border border-slate-300 bg-white text-xl font-bold text-slate-900 tabular-nums focus:outline-none focus:ring-2 focus:ring-green-600"
                   value={opExpenseAmount}
                   onChange={(e) => setOpExpenseAmount(Number(e.target.value))}
                 />
@@ -2606,20 +2727,20 @@ export function App() {
             <>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-base font-bold text-slate-800 mb-1.5">
+                  <label className="block text-sm sm:text-base font-bold text-slate-800 mb-1.5">
                     Cantidad entregada
                   </label>
                   <input
                     type="number"
                     inputMode="numeric"
                     min={1}
-                    className="w-full min-h-[52px] px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white text-xl font-bold text-slate-900 tabular-nums focus:outline-none focus:ring-2 focus:ring-green-600"
+                    className="w-full min-h-[50px] px-3.5 py-2 rounded-xl border border-slate-300 bg-white text-xl font-bold text-slate-900 tabular-nums focus:outline-none focus:ring-2 focus:ring-green-600"
                     value={opDeliveredQty}
                     onChange={(e) => setOpDeliveredQty(Number(e.target.value))}
                   />
                 </div>
                 <div>
-                  <label className="block text-base font-bold text-slate-800 mb-1.5">
+                  <label className="block text-sm sm:text-base font-bold text-slate-800 mb-1.5">
                     Cantidad aceptada
                   </label>
                   <input
@@ -2627,38 +2748,59 @@ export function App() {
                     inputMode="numeric"
                     min={0}
                     max={opDeliveredQty}
-                    className="w-full min-h-[52px] px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white text-xl font-bold text-slate-900 tabular-nums focus:outline-none focus:ring-2 focus:ring-green-600"
+                    className="w-full min-h-[50px] px-3.5 py-2 rounded-xl border border-slate-300 bg-white text-xl font-bold text-slate-900 tabular-nums focus:outline-none focus:ring-2 focus:ring-green-600"
                     value={opAcceptedQty}
                     onChange={(e) => setOpAcceptedQty(Number(e.target.value))}
                   />
                 </div>
               </div>
               <div>
-                <label className="block text-base font-bold text-slate-800 mb-1.5">
+                <label className="block text-sm sm:text-base font-bold text-slate-800 mb-1.5">
                   Compensación del proveedor
                 </label>
-                <select
-                  className="w-full min-h-[52px] px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white text-base font-medium text-slate-900 focus:outline-none focus:ring-2 focus:ring-green-600"
-                  value={opCompensationType}
-                  onChange={(e) =>
-                    setOpCompensationType(
-                      e.target.value as SupplierCompensationType
-                    )
-                  }
-                >
-                  <option value="CREDIT_BALANCE">
-                    Saldo a favor nuestro (no suma a efectivo hoy)
-                  </option>
-                  <option value="PENDING_COMPENSATION">
-                    Pendiente de compensación (no suma a efectivo hoy)
-                  </option>
-                  <option value="CASH_REFUND_RECEIVED">
-                    Reembolso inmediato en efectivo recibido
-                  </option>
-                  <option value="PRODUCT_EXCHANGE">
-                    Cambio por otros productos
-                  </option>
-                </select>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {(
+                    [
+                      {
+                        id: 'CREDIT_BALANCE',
+                        label: 'Saldo a favor nuestro',
+                        sub: 'No suma a efectivo hoy',
+                      },
+                      {
+                        id: 'PENDING_COMPENSATION',
+                        label: 'Pendiente de compensar',
+                        sub: 'No suma a efectivo hoy',
+                      },
+                      {
+                        id: 'CASH_REFUND_RECEIVED',
+                        label: 'Efectivo recibido hoy',
+                        sub: 'Suma a efectivo en caja',
+                      },
+                      {
+                        id: 'PRODUCT_EXCHANGE',
+                        label: 'Cambio por producto',
+                        sub: 'Reposición de fruta',
+                      },
+                    ] as const
+                  ).map((comp) => {
+                    const selected = opCompensationType === comp.id;
+                    return (
+                      <button
+                        key={comp.id}
+                        type="button"
+                        onClick={() => setOpCompensationType(comp.id)}
+                        className={`p-2.5 rounded-xl border text-left transition-colors cursor-pointer ${
+                          selected
+                            ? 'bg-green-50 border-green-600 text-green-950 ring-1 ring-green-600'
+                            : 'bg-white border-slate-300 hover:bg-slate-50 text-slate-800'
+                        }`}
+                      >
+                        <div className="text-sm font-bold">{comp.label}</div>
+                        <div className="text-xs text-slate-500">{comp.sub}</div>
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
             </>
           )}
@@ -2666,39 +2808,57 @@ export function App() {
           {newOpModalType === 'CRATE_MOVEMENT' && (
             <>
               <div>
-                <label className="block text-base font-bold text-slate-800 mb-1.5">
+                <label className="block text-sm sm:text-base font-bold text-slate-800 mb-1.5">
                   Tipo de movimiento
                 </label>
-                <select
-                  className="w-full min-h-[52px] px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white text-base font-medium text-slate-900 focus:outline-none focus:ring-2 focus:ring-green-600"
-                  value={opCrateType}
-                  onChange={(e) =>
-                    setOpCrateType(e.target.value as CrateMovementType)
-                  }
-                >
-                  <option value="DELIVERED_TO_CLIENT">
-                    Entregadas / prestadas al cliente
-                  </option>
-                  <option value="RETURNED_BY_CLIENT">
-                    Devueltas por el cliente
-                  </option>
-                  <option value="RECEIVED_FROM_SUPPLIER">
-                    Recibidas del proveedor
-                  </option>
-                  <option value="RETURNED_TO_SUPPLIER">
-                    Devueltas al proveedor
-                  </option>
-                </select>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {(
+                    [
+                      {
+                        id: 'DELIVERED_TO_CLIENT',
+                        label: 'Prestadas al cliente',
+                      },
+                      {
+                        id: 'RETURNED_BY_CLIENT',
+                        label: 'Devueltas por cliente',
+                      },
+                      {
+                        id: 'RECEIVED_FROM_SUPPLIER',
+                        label: 'Recibidas de proveedor',
+                      },
+                      {
+                        id: 'RETURNED_TO_SUPPLIER',
+                        label: 'Devueltas a proveedor',
+                      },
+                    ] as const
+                  ).map((mv) => {
+                    const selected = opCrateType === mv.id;
+                    return (
+                      <button
+                        key={mv.id}
+                        type="button"
+                        onClick={() => setOpCrateType(mv.id)}
+                        className={`min-h-[46px] px-3 py-2 rounded-xl border text-left text-sm font-bold transition-colors cursor-pointer ${
+                          selected
+                            ? 'bg-green-50 border-green-600 text-green-950 ring-1 ring-green-600'
+                            : 'bg-white border-slate-300 hover:bg-slate-50 text-slate-800'
+                        }`}
+                      >
+                        {mv.label}
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
               <div>
-                <label className="block text-base font-bold text-slate-800 mb-1.5">
+                <label className="block text-sm sm:text-base font-bold text-slate-800 mb-1.5">
                   Cantidad de canastillas
                 </label>
                 <input
                   type="number"
                   inputMode="numeric"
                   min={1}
-                  className="w-full min-h-[52px] px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white text-xl font-bold text-slate-900 tabular-nums focus:outline-none focus:ring-2 focus:ring-green-600"
+                  className="w-full min-h-[50px] px-3.5 py-2 rounded-xl border border-slate-300 bg-white text-xl font-bold text-slate-900 tabular-nums focus:outline-none focus:ring-2 focus:ring-green-600"
                   value={opQuantity}
                   onChange={(e) => setOpQuantity(Number(e.target.value))}
                 />
@@ -2709,22 +2869,61 @@ export function App() {
           {newOpModalType !== 'CRATE_MOVEMENT' &&
             newOpModalType !== 'SUPPLIER_RETURN' && (
               <div>
-                <label className="block text-base font-bold text-slate-800 mb-1.5">
+                <label className="block text-sm sm:text-base font-bold text-slate-800 mb-1.5">
                   Medio de pago
                 </label>
-                <select
-                  className="w-full min-h-[52px] px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white text-base font-medium text-slate-900 focus:outline-none focus:ring-2 focus:ring-green-600"
-                  value={opPaymentMethod}
-                  onChange={(e) =>
-                    setOpPaymentMethod(e.target.value as PaymentMethod)
-                  }
+                <div
+                  className={`grid gap-2 ${
+                    newOpModalType === 'SALE' ? 'grid-cols-3' : 'grid-cols-2'
+                  }`}
                 >
-                  <option value="CASH">Efectivo (billetes y monedas)</option>
-                  <option value="TRANSFER">Transferencia bancaria</option>
-                  {newOpModalType === 'SALE' && (
-                    <option value="CREDIT">Fiado (crédito a cliente)</option>
-                  )}
-                </select>
+                  {(
+                    [
+                      { id: 'CASH', label: 'Efectivo', sub: 'Billetes' },
+                      {
+                        id: 'TRANSFER',
+                        label: 'Transferencia',
+                        sub: 'Banco / Nequi',
+                      },
+                      ...(newOpModalType === 'SALE'
+                        ? [
+                            {
+                              id: 'CREDIT' as const,
+                              label: 'Fiado',
+                              sub: 'Crédito',
+                            },
+                          ]
+                        : []),
+                    ] as const
+                  ).map((pm) => {
+                    const selected = opPaymentMethod === pm.id;
+                    return (
+                      <button
+                        key={pm.id}
+                        type="button"
+                        onClick={() =>
+                          setOpPaymentMethod(pm.id as PaymentMethod)
+                        }
+                        className={`min-h-[52px] px-2.5 py-2 rounded-xl border text-center flex flex-col items-center justify-center transition-colors cursor-pointer ${
+                          selected
+                            ? 'bg-green-700 border-green-700 text-white shadow-2xs'
+                            : 'bg-white border-slate-300 hover:bg-slate-50 text-slate-800'
+                        }`}
+                      >
+                        <span className="text-sm font-bold leading-tight">
+                          {pm.label}
+                        </span>
+                        <span
+                          className={`text-[11px] leading-tight mt-0.5 ${
+                            selected ? 'text-green-100' : 'text-slate-500'
+                          }`}
+                        >
+                          {pm.sub}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
             )}
 
