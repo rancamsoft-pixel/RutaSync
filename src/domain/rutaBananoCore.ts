@@ -113,6 +113,7 @@ export function createDefaultInitialState(nowMs: number = Date.now()): RutaBanan
       id: 'PROD-BANANO-PRIMERA',
       businessId,
       name: 'Banano Primera (Caja 20 Kg)',
+      shortCode: 'B1-CAJA',
       unit: 'Cajas',
       defaultCostPrice: 28000,
       defaultSalePrice: 38000,
@@ -122,6 +123,7 @@ export function createDefaultInitialState(nowMs: number = Date.now()): RutaBanan
       id: 'PROD-BANANO-CRIOLLO',
       businessId,
       name: 'Banano Criollo Maduro (Canastilla)',
+      shortCode: 'BC-CANA',
       unit: 'Canastillas',
       defaultCostPrice: 22000,
       defaultSalePrice: 32000,
@@ -131,6 +133,7 @@ export function createDefaultInitialState(nowMs: number = Date.now()): RutaBanan
       id: 'PROD-PLATANO-HARTON',
       businessId,
       name: 'Plátano Hartón Verde (Racimo)',
+      shortCode: 'PL-RACI',
       unit: 'Racimos',
       defaultCostPrice: 35000,
       defaultSalePrice: 48000,
@@ -647,6 +650,106 @@ export class RutaBananoCoreService {
       code: 'OK',
       message: `Auxiliar ${newHelper.name} creado correctamente.`,
       data: newHelper,
+    };
+  }
+
+  // ============================================================================
+  // SECCIÓN 2.1: GESTIÓN DE PRODUCTOS DEL CATÁLOGO POR EL DUEÑO
+  // ============================================================================
+
+  public async saveProductCatalogItem(params: {
+    actorUserId: string;
+    product: {
+      id?: string;
+      name: string;
+      shortCode?: string;
+      unit: string;
+      defaultCostPrice: number;
+      defaultSalePrice: number;
+      active?: boolean;
+    };
+  }): Promise<CoreOperationResult<ProductCatalogItem>> {
+    const actor = this.getUserById(params.actorUserId);
+    const check = ServerPolicyValidator.validateUserManagementAction(
+      actor,
+      this.state.config.businessId
+    );
+    if (!check.allowed) {
+      return { ok: false, code: check.code, message: check.message };
+    }
+
+    if (!params.product.name.trim()) {
+      return {
+        ok: false,
+        code: 'INVALID_PRODUCT_NAME',
+        message: 'Ingresa el nombre del producto.',
+      };
+    }
+
+    const shortCode = (
+      params.product.shortCode ||
+      params.product.name.substring(0, 3).toUpperCase()
+    ).trim();
+
+    let savedProduct: ProductCatalogItem;
+    if (params.product.id) {
+      const existing = this.state.products.find((p) => p.id === params.product.id);
+      if (!existing) {
+        return {
+          ok: false,
+          code: 'PRODUCT_NOT_FOUND',
+          message: 'No se encontró el producto especificado.',
+        };
+      }
+      existing.name = params.product.name.trim();
+      existing.shortCode = shortCode;
+      existing.unit = params.product.unit || existing.unit;
+      existing.defaultCostPrice = params.product.defaultCostPrice;
+      existing.defaultSalePrice = params.product.defaultSalePrice;
+      if (params.product.active !== undefined) {
+        existing.active = params.product.active;
+      }
+      savedProduct = existing;
+    } else {
+      savedProduct = {
+        id: generateUniqueId('PROD'),
+        businessId: this.state.config.businessId,
+        name: params.product.name.trim(),
+        shortCode,
+        unit: params.product.unit || 'Canastillas',
+        defaultCostPrice: params.product.defaultCostPrice,
+        defaultSalePrice: params.product.defaultSalePrice,
+        active: params.product.active ?? true,
+      };
+      this.state.products.push(savedProduct);
+    }
+
+    this.appendAudit({
+      businessId: this.state.config.businessId,
+      actorId: actor!.id,
+      actorName: actor!.name,
+      actorRole: actor!.role,
+      actionType: 'POLICY_CONFIG_CHANGED',
+      reason: 'Gestión de catálogo de productos',
+      previousValue: null,
+      newValue: savedProduct,
+      result: 'SUCCESS',
+    });
+
+    await this.persistAndEnqueue({
+      idempotencyKey: `PROD-${savedProduct.id}-${Date.now()}`,
+      businessId: this.state.config.businessId,
+      entityType: 'OPERATION',
+      entityId: savedProduct.id,
+      action: params.product.id ? 'UPDATE' : 'CREATE',
+      payload: savedProduct,
+    });
+
+    return {
+      ok: true,
+      code: 'OK',
+      message: `Producto ${savedProduct.name} (${savedProduct.shortCode}) guardado exitosamente en el catálogo.`,
+      data: savedProduct,
     };
   }
 

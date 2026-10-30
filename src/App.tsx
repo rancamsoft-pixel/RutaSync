@@ -7,6 +7,7 @@ import {
   Boxes,
   Calendar,
   CheckCircle2,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
   Clock,
@@ -24,6 +25,7 @@ import {
   ShoppingCart,
   Sliders,
   Sunrise,
+  TrendingUp,
   Truck,
   UserPlus,
   Users,
@@ -57,6 +59,7 @@ import {
   ExpenseCategory,
   OperationType,
   PaymentMethod,
+  ProductCatalogItem,
   RouteOperation,
   SupplierCompensationType,
 } from './types/domain';
@@ -148,9 +151,9 @@ export function App() {
     'ALL' | 'WITH_MONEY_DEBT' | 'WITH_CRATE_DEBT'
   >('ALL');
 
-  // 4. Sub-tabs de la vista Dueño
+  // 4. Sub-tabs de la vista Dueño (Políticas, Productos, Auxiliares, Cierres)
   const [ownerSubTab, setOwnerSubTab] = useState<
-    'POLICIES' | 'HELPERS' | 'ADJUSTMENTS'
+    'POLICIES' | 'PRODUCTS' | 'HELPERS' | 'ADJUSTMENTS'
   >('POLICIES');
 
   // Estados de paginación para todas las tablas
@@ -273,6 +276,17 @@ export function App() {
   // Estado para nuevo auxiliar
   const [newHelperName, setNewHelperName] = useState<string>('');
   const [newHelperPin] = useState<string>('1122');
+
+  // Estado para gestión y creación de productos por el Dueño
+  const [editingProduct, setEditingProduct] = useState<ProductCatalogItem | null>(
+    null
+  );
+  const [prodFormName, setProdFormName] = useState<string>('');
+  const [prodFormCode, setProdFormCode] = useState<string>('');
+  const [prodFormUnit, setProdFormUnit] = useState<string>('Canastillas');
+  const [prodFormCost, setProdFormCost] = useState<number>(22000);
+  const [prodFormSale, setProdFormSale] = useState<number>(32000);
+  const [productsPage, setProductsPage] = useState<number>(1);
 
   // Estado para las 15 pruebas obligatorias
   const [testResults, setTestResults] = useState<AcceptanceTestResult[] | null>(
@@ -849,11 +863,13 @@ export function App() {
           supplierModalMode === 'BUY_RETURN' &&
           supplierActionType === 'PURCHASE';
         const price = isPurchase ? p.defaultCostPrice : p.defaultSalePrice;
+        const code = p.shortCode || p.name.substring(0, 3).toUpperCase();
         return {
           id: p.id,
-          label: p.name,
-          sublabel: `Unidad: ${p.unit}`,
-          badgeText: `${formatCOP(price)} / ${p.unit}`,
+          // Muestra la abreviación y el nombre limpio sin textos excesivos
+          label: `[${code}] ${p.name}`,
+          sublabel: `${formatCOP(price)} · ${p.unit}`,
+          badgeText: code,
           badgeTone: 'green' as const,
         };
       }),
@@ -894,70 +910,8 @@ export function App() {
 
   const PAGE_SIZE = 5;
 
-  // Panel lateral derecho en pantallas grandes (Desktop)
-  const rightSummaryPanel =
-    reconciliation && activeShift ? (
-      <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs space-y-4">
-        <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-          <div className="flex items-center gap-2">
-            <Wallet className="w-5 h-5 text-green-700" />
-            <h3 className="font-bold text-base text-slate-900">
-              Resumen en Tiempo Real
-            </h3>
-          </div>
-          <span className="text-xs font-medium text-slate-500">
-            {activeShift.operatingDate}
-          </span>
-        </div>
-
-        <div className="space-y-2 text-sm">
-          <div className="flex justify-between items-center py-1.5 border-b border-slate-100">
-            <span className="text-slate-600">Ventas del día:</span>
-            <strong className="text-base font-bold text-slate-900 tabular-nums">
-              {formatCOP(reconciliation.financials.totalSalesAmount)}
-            </strong>
-          </div>
-          <div className="flex justify-between items-center py-1.5 border-b border-slate-100">
-            <span className="text-slate-600">Fiados de hoy pendientes:</span>
-            <strong className="text-base font-bold text-amber-700 tabular-nums">
-              {formatCOP(
-                reconciliation.financials.pendingReceivablesFromCurrentSales
-              )}
-            </strong>
-          </div>
-          <div className="flex justify-between items-center py-1.5 border-b border-slate-100">
-            <span className="text-slate-600">Cobros deuda anterior:</span>
-            <strong className="text-base font-bold text-blue-700 tabular-nums">
-              {formatCOP(reconciliation.financials.totalPastDebtCollected)}
-            </strong>
-          </div>
-          <div className="flex justify-between items-center py-1.5 border-b border-slate-100">
-            <span className="text-slate-600">Ganancia Neta (Utilidad):</span>
-            <strong className="text-base font-bold text-green-700 tabular-nums">
-              {formatCOP(reconciliation.financials.economicNetProfit)}
-            </strong>
-          </div>
-        </div>
-
-        <div className="p-3.5 rounded-xl bg-green-50/80 border border-green-200 flex justify-between items-center">
-          <span className="text-sm font-semibold text-green-950">
-            Efectivo físico esperado:
-          </span>
-          <strong className="text-xl font-extrabold text-green-800 tabular-nums">
-            {formatCOP(reconciliation.financials.expectedCashInBox)}
-          </strong>
-        </div>
-
-        <button
-          type="button"
-          onClick={() => setClosureModalOpen(true)}
-          className="w-full min-h-[48px] px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-sm flex items-center justify-center gap-2 transition-colors cursor-pointer"
-        >
-          <Lock className="w-4 h-4" />
-          <span>Cerrar Día / Conciliación</span>
-        </button>
-      </div>
-    ) : null;
+  // No mostrar panel lateral en ninguna vista; toda la conciliación se gestiona en Ruta de Hoy
+  const rightSummaryPanel = null;
 
   return (
     <ResponsivePwaShell
@@ -1030,9 +984,9 @@ export function App() {
              ==================================================================== */}
           {activeTab === 'OPERATE' && activeShift && reconciliation && (
             <main className="space-y-4">
-              {/* Tarjeta superior con Acordeón: Resumen en Tiempo Real / KPIs de Ruta */}
+              {/* Tarjeta superior con Acordeón: 2 Títulos (uno arriba del otro) */}
               <section className="bg-white border border-slate-200 rounded-2xl p-4 sm:p-5 shadow-xs space-y-3.5">
-                {/* Fila superior: Jornada, Estado, Vehículo y Botón compacto de Cierre */}
+                {/* Fila superior: Jornada, Estado, Vehículo sin duplicar palabras ni datos redundantes */}
                 <div className="flex items-center justify-between gap-2.5 flex-wrap">
                   <div className="flex items-center gap-2.5 min-w-0">
                     <div className="w-9 h-9 rounded-xl bg-green-50 text-green-700 border border-green-100 flex items-center justify-center shrink-0">
@@ -1056,12 +1010,12 @@ export function App() {
                         )}
                       </div>
                       <div className="text-xs text-slate-600 truncate">
-                        Camión: <strong className="text-slate-800">{activeShift.vehicle}</strong> · Resp: <strong className="text-slate-800">{activeShift.responsibleUserName}</strong>
+                        {activeShift.vehicle}
                       </div>
                     </div>
                   </div>
 
-                  {/* Botón arriba compacto que no ocupe tanto espacio */}
+                  {/* Botón arriba compacto de Cierre */}
                   <button
                     type="button"
                     onClick={() => setClosureModalOpen(true)}
@@ -1080,121 +1034,146 @@ export function App() {
                   </button>
                 </div>
 
-                {/* Selector tipo acordeón entre la vista de 'Resumen en Tiempo Real' y 'KPIs Operativos' */}
-                <div className="flex items-center p-1 rounded-xl bg-slate-100 border border-slate-200 text-xs font-bold">
-                  <button
-                    type="button"
-                    onClick={() => setShowRealTimeSummaryAccordion(true)}
-                    className={`flex-1 py-1.5 px-2 rounded-lg text-center transition-colors cursor-pointer ${
-                      showRealTimeSummaryAccordion
-                        ? 'bg-white text-green-800 shadow-2xs'
-                        : 'text-slate-600 hover:text-slate-900'
-                    }`}
-                  >
-                    Resumen en Tiempo Real
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setShowRealTimeSummaryAccordion(false)}
-                    className={`flex-1 py-1.5 px-2 rounded-lg text-center transition-colors cursor-pointer ${
-                      !showRealTimeSummaryAccordion
-                        ? 'bg-white text-green-800 shadow-2xs'
-                        : 'text-slate-600 hover:text-slate-900'
-                    }`}
-                  >
-                    Indicadores Rápidos (KPIs)
-                  </button>
+                {/* Acordeón real: Dos títulos uno arriba y otro abajo. Al tocar uno, se expande debajo de su propio título y se contrae el otro */}
+                <div className="space-y-2 pt-1 border-t border-slate-100">
+                  {/* Título Acordeón 1: Resumen en Tiempo Real */}
+                  <div className="rounded-xl border border-slate-200 overflow-hidden bg-white">
+                    <button
+                      type="button"
+                      onClick={() => setShowRealTimeSummaryAccordion(true)}
+                      className={`w-full px-3.5 py-2.5 text-left flex items-center justify-between font-bold text-xs sm:text-sm transition-colors cursor-pointer ${
+                        showRealTimeSummaryAccordion
+                          ? 'bg-green-50/80 text-green-950 border-b border-green-200'
+                          : 'bg-slate-50 hover:bg-slate-100 text-slate-800'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <Wallet className="w-4 h-4 text-green-700" />
+                        <span>Resumen en Tiempo Real</span>
+                      </div>
+                      <ChevronDown
+                        className={`w-4 h-4 transition-transform duration-200 ${
+                          showRealTimeSummaryAccordion ? 'rotate-180 text-green-800' : 'text-slate-500'
+                        }`}
+                      />
+                    </button>
+
+                    {showRealTimeSummaryAccordion && (
+                      <div className="p-3.5 space-y-2.5">
+                        <div className="space-y-1.5 text-xs sm:text-sm">
+                          <div className="flex justify-between items-center py-1.5 border-b border-slate-100">
+                            <span className="text-slate-600">Ventas del día:</span>
+                            <strong className="text-sm sm:text-base font-bold text-slate-900 tabular-nums">
+                              {formatCOP(reconciliation.financials.totalSalesAmount)}
+                            </strong>
+                          </div>
+                          <div className="flex justify-between items-center py-1.5 border-b border-slate-100">
+                            <span className="text-slate-600">Fiados de hoy pendientes:</span>
+                            <strong className="text-sm sm:text-base font-bold text-amber-700 tabular-nums">
+                              {formatCOP(
+                                reconciliation.financials
+                                  .pendingReceivablesFromCurrentSales
+                              )}
+                            </strong>
+                          </div>
+                          <div className="flex justify-between items-center py-1.5 border-b border-slate-100">
+                            <span className="text-slate-600">Cobros deuda anterior:</span>
+                            <strong className="text-sm sm:text-base font-bold text-blue-700 tabular-nums">
+                              {formatCOP(
+                                reconciliation.financials.totalPastDebtCollected
+                              )}
+                            </strong>
+                          </div>
+                          <div className="flex justify-between items-center py-1.5 border-b border-slate-100">
+                            <span className="text-slate-600">Ganancia Neta (Utilidad):</span>
+                            <strong className="text-sm sm:text-base font-bold text-green-700 tabular-nums">
+                              {formatCOP(
+                                reconciliation.financials.economicNetProfit
+                              )}
+                            </strong>
+                          </div>
+                        </div>
+
+                        <div className="p-3 rounded-xl bg-green-50/90 border border-green-200 flex justify-between items-center">
+                          <span className="text-xs sm:text-sm font-semibold text-green-950">
+                            Efectivo físico esperado:
+                          </span>
+                          <strong className="text-base sm:text-xl font-extrabold text-green-800 tabular-nums">
+                            {formatCOP(reconciliation.financials.expectedCashInBox)}
+                          </strong>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Título Acordeón 2: Indicadores Rápidos (KPIs) */}
+                  <div className="rounded-xl border border-slate-200 overflow-hidden bg-white">
+                    <button
+                      type="button"
+                      onClick={() => setShowRealTimeSummaryAccordion(false)}
+                      className={`w-full px-3.5 py-2.5 text-left flex items-center justify-between font-bold text-xs sm:text-sm transition-colors cursor-pointer ${
+                        !showRealTimeSummaryAccordion
+                          ? 'bg-green-50/80 text-green-950 border-b border-green-200'
+                          : 'bg-slate-50 hover:bg-slate-100 text-slate-800'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <TrendingUp className="w-4 h-4 text-green-700" />
+                        <span>Indicadores Rápidos (KPIs)</span>
+                      </div>
+                      <ChevronDown
+                        className={`w-4 h-4 transition-transform duration-200 ${
+                          !showRealTimeSummaryAccordion ? 'rotate-180 text-green-800' : 'text-slate-500'
+                        }`}
+                      />
+                    </button>
+
+                    {!showRealTimeSummaryAccordion && (
+                      <div className="p-3.5">
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                          <div className="p-3 rounded-xl bg-green-50/90 border border-green-200">
+                            <span className="block text-xs font-semibold text-green-900">
+                              Efectivo en caja
+                            </span>
+                            <strong className="text-base sm:text-lg font-extrabold text-green-800 tabular-nums">
+                              {formatCOP(reconciliation.financials.expectedCashInBox)}
+                            </strong>
+                          </div>
+
+                          <div className="p-3 rounded-xl bg-slate-50 border border-slate-200">
+                            <span className="block text-xs font-medium text-slate-600">
+                              Ventas de hoy
+                            </span>
+                            <strong className="text-base sm:text-lg font-bold text-slate-900 tabular-nums">
+                              {formatCOP(reconciliation.financials.totalSalesAmount)}
+                            </strong>
+                          </div>
+
+                          <div className="p-3 rounded-xl bg-amber-50/70 border border-amber-200">
+                            <span className="block text-xs font-medium text-amber-900">
+                              Fiados hoy
+                            </span>
+                            <strong className="text-base sm:text-lg font-bold text-amber-800 tabular-nums">
+                              {formatCOP(
+                                reconciliation.financials
+                                  .pendingReceivablesFromCurrentSales
+                              )}
+                            </strong>
+                          </div>
+
+                          <div className="p-3 rounded-xl bg-blue-50/70 border border-blue-200">
+                            <span className="block text-xs font-medium text-blue-900">
+                              Utilidad neta
+                            </span>
+                            <strong className="text-base sm:text-lg font-bold text-blue-800 tabular-nums">
+                              {formatCOP(reconciliation.financials.economicNetProfit)}
+                            </strong>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </div>
-
-                {/* VISTA A (FOTO): Resumen en Tiempo Real */}
-                {showRealTimeSummaryAccordion ? (
-                  <div className="space-y-2.5 pt-1">
-                    <div className="space-y-1.5 text-xs sm:text-sm">
-                      <div className="flex justify-between items-center py-1.5 border-b border-slate-100">
-                        <span className="text-slate-600">Ventas del día:</span>
-                        <strong className="text-sm sm:text-base font-bold text-slate-900 tabular-nums">
-                          {formatCOP(reconciliation.financials.totalSalesAmount)}
-                        </strong>
-                      </div>
-                      <div className="flex justify-between items-center py-1.5 border-b border-slate-100">
-                        <span className="text-slate-600">Fiados de hoy pendientes:</span>
-                        <strong className="text-sm sm:text-base font-bold text-amber-700 tabular-nums">
-                          {formatCOP(
-                            reconciliation.financials
-                              .pendingReceivablesFromCurrentSales
-                          )}
-                        </strong>
-                      </div>
-                      <div className="flex justify-between items-center py-1.5 border-b border-slate-100">
-                        <span className="text-slate-600">Cobros deuda anterior:</span>
-                        <strong className="text-sm sm:text-base font-bold text-blue-700 tabular-nums">
-                          {formatCOP(
-                            reconciliation.financials.totalPastDebtCollected
-                          )}
-                        </strong>
-                      </div>
-                      <div className="flex justify-between items-center py-1.5 border-b border-slate-100">
-                        <span className="text-slate-600">Ganancia Neta (Utilidad):</span>
-                        <strong className="text-sm sm:text-base font-bold text-green-700 tabular-nums">
-                          {formatCOP(
-                            reconciliation.financials.economicNetProfit
-                          )}
-                        </strong>
-                      </div>
-                    </div>
-
-                    <div className="p-3 rounded-xl bg-green-50/90 border border-green-200 flex justify-between items-center">
-                      <span className="text-xs sm:text-sm font-semibold text-green-950">
-                        Efectivo físico esperado:
-                      </span>
-                      <strong className="text-base sm:text-xl font-extrabold text-green-800 tabular-nums">
-                        {formatCOP(reconciliation.financials.expectedCashInBox)}
-                      </strong>
-                    </div>
-                  </div>
-                ) : (
-                  /* VISTA B: Otros KPIs de Ruta */
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 pt-1">
-                    <div className="p-3 rounded-xl bg-green-50/90 border border-green-200">
-                      <span className="block text-xs font-semibold text-green-900">
-                        Efectivo en caja
-                      </span>
-                      <strong className="text-base sm:text-lg font-extrabold text-green-800 tabular-nums">
-                        {formatCOP(reconciliation.financials.expectedCashInBox)}
-                      </strong>
-                    </div>
-
-                    <div className="p-3 rounded-xl bg-slate-50 border border-slate-200">
-                      <span className="block text-xs font-medium text-slate-600">
-                        Ventas de hoy
-                      </span>
-                      <strong className="text-base sm:text-lg font-bold text-slate-900 tabular-nums">
-                        {formatCOP(reconciliation.financials.totalSalesAmount)}
-                      </strong>
-                    </div>
-
-                    <div className="p-3 rounded-xl bg-amber-50/70 border border-amber-200">
-                      <span className="block text-xs font-medium text-amber-900">
-                        Fiados hoy
-                      </span>
-                      <strong className="text-base sm:text-lg font-bold text-amber-800 tabular-nums">
-                        {formatCOP(
-                          reconciliation.financials
-                            .pendingReceivablesFromCurrentSales
-                        )}
-                      </strong>
-                    </div>
-
-                    <div className="p-3 rounded-xl bg-blue-50/70 border border-blue-200">
-                      <span className="block text-xs font-medium text-blue-900">
-                        Utilidad neta
-                      </span>
-                      <strong className="text-base sm:text-lg font-bold text-blue-800 tabular-nums">
-                        {formatCOP(reconciliation.financials.economicNetProfit)}
-                      </strong>
-                    </div>
-                  </div>
-                )}
               </section>
 
               {/* UNA SOLA SECCIÓN UNIFICADA CON 4 TABS */}
@@ -1894,19 +1873,20 @@ export function App() {
                   </div>
                 </div>
 
-                {/* 3 Tabs del Dueño */}
-                <div className="grid grid-cols-3 gap-1 p-1 rounded-xl bg-slate-100 border border-slate-200">
+                {/* 4 Tabs del Dueño */}
+                <div className="grid grid-cols-4 gap-1 p-1 rounded-xl bg-slate-100 border border-slate-200">
                   {(
                     [
-                      { id: 'POLICIES', label: 'Políticas y Cierre' },
+                      { id: 'POLICIES', label: 'Políticas' },
+                      { id: 'PRODUCTS', label: 'Productos' },
                       { id: 'HELPERS', label: 'Auxiliares' },
-                      { id: 'ADJUSTMENTS', label: 'Ajustes Cierres' },
+                      { id: 'ADJUSTMENTS', label: 'Cierres' },
                     ] as const
                   ).map((tab) => (
                     <button
                       key={tab.id}
                       type="button"
-                      onClick={() => setOwnerSubTab(tab.id)}
+                      onClick={() => setOwnerSubTab(tab.id as any)}
                       className={`min-h-[40px] px-2 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer truncate ${
                         ownerSubTab === tab.id
                           ? 'bg-white text-green-800 shadow-2xs'
@@ -1999,6 +1979,195 @@ export function App() {
                         Permitir que el auxiliar responsable ejecute el cierre definitivo
                       </span>
                     </label>
+                  </div>
+                )}
+
+                {/* TAB NUEVO: PRODUCTOS DEL CATÁLOGO (Gestión por el Dueño) */}
+                {ownerSubTab === 'PRODUCTS' && (
+                  <div className="space-y-3.5">
+                    <form
+                      onSubmit={async (e) => {
+                        e.preventDefault();
+                        const res = await coreService.saveProductCatalogItem({
+                          actorUserId: currentUser.id,
+                          product: {
+                            id: editingProduct?.id,
+                            name: prodFormName,
+                            shortCode: prodFormCode,
+                            unit: prodFormUnit,
+                            defaultCostPrice: prodFormCost,
+                            defaultSalePrice: prodFormSale,
+                            active: true,
+                          },
+                        });
+                        if (res.ok) {
+                          setEditingProduct(null);
+                          setProdFormName('');
+                          setProdFormCode('');
+                          setFeedback({ type: 'success', text: res.message });
+                        } else {
+                          setFeedback({ type: 'error', text: res.message });
+                        }
+                        refreshState();
+                      }}
+                      className="p-3.5 rounded-xl border border-slate-200 bg-slate-50 space-y-2.5"
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold uppercase text-slate-800">
+                          {editingProduct ? 'Editar Producto' : '+ Registrar Nuevo Producto'}
+                        </span>
+                        {editingProduct && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEditingProduct(null);
+                              setProdFormName('');
+                              setProdFormCode('');
+                            }}
+                            className="text-xs font-bold text-slate-500 hover:text-slate-800 cursor-pointer"
+                          >
+                            Cancelar edición
+                          </button>
+                        )}
+                      </div>
+
+                      <div className="grid grid-cols-12 gap-2">
+                        <div className="col-span-8">
+                          <input
+                            type="text"
+                            required
+                            placeholder="Nombre del producto (ej: Banano Criollo)..."
+                            className="w-full min-h-[38px] px-3 py-1 rounded-xl border border-slate-300 bg-white text-xs sm:text-sm font-semibold"
+                            value={prodFormName}
+                            onChange={(e) => setProdFormName(e.target.value)}
+                          />
+                        </div>
+                        <div className="col-span-4">
+                          <input
+                            type="text"
+                            required
+                            placeholder="Abreviación (ej: BC)..."
+                            className="w-full min-h-[38px] px-2 py-1 rounded-xl border border-slate-300 bg-white text-xs sm:text-sm font-bold text-center uppercase"
+                            value={prodFormCode}
+                            onChange={(e) => setProdFormCode(e.target.value.toUpperCase())}
+                          />
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-3 gap-2">
+                        <div>
+                          <label className="block text-[10px] font-bold text-slate-600 mb-0.5">
+                            Unidad
+                          </label>
+                          <input
+                            type="text"
+                            required
+                            placeholder="Canastillas, Cajas..."
+                            className="w-full min-h-[36px] px-2 py-1 rounded-lg border border-slate-300 bg-white text-xs font-medium"
+                            value={prodFormUnit}
+                            onChange={(e) => setProdFormUnit(e.target.value)}
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-bold text-slate-600 mb-0.5">
+                            Costo Compra ($)
+                          </label>
+                          <input
+                            type="number"
+                            inputMode="decimal"
+                            min={0}
+                            className="w-full min-h-[36px] px-2 py-1 rounded-lg border border-slate-300 bg-white text-xs font-extrabold tabular-nums"
+                            value={prodFormCost}
+                            onChange={(e) => setProdFormCost(Number(e.target.value))}
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-bold text-slate-600 mb-0.5">
+                            Precio Venta ($)
+                          </label>
+                          <input
+                            type="number"
+                            inputMode="decimal"
+                            min={0}
+                            className="w-full min-h-[36px] px-2 py-1 rounded-lg border border-slate-300 bg-white text-xs font-extrabold tabular-nums"
+                            value={prodFormSale}
+                            onChange={(e) => setProdFormSale(Number(e.target.value))}
+                          />
+                        </div>
+                      </div>
+
+                      <button
+                        type="submit"
+                        className="w-full min-h-[40px] rounded-xl bg-green-700 hover:bg-green-800 text-white font-bold text-xs shadow-xs cursor-pointer"
+                      >
+                        {editingProduct ? 'Guardar Cambios de Producto' : 'Guardar Producto en Catálogo'}
+                      </button>
+                    </form>
+
+                    {/* Tabla de 2 columnas de productos registrados con paginación */}
+                    <div className="overflow-hidden rounded-xl border border-slate-200">
+                      <table className="w-full text-left border-collapse">
+                        <thead>
+                          <tr className="bg-slate-50 border-b border-slate-200 text-xs font-bold text-slate-600">
+                            <th className="py-2.5 px-3">Producto y Abreviación</th>
+                            <th className="py-2.5 px-3 text-right">Precios / Acción</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-200 text-sm">
+                          {state.products
+                            .slice((productsPage - 1) * PAGE_SIZE, productsPage * PAGE_SIZE)
+                            .map((p) => {
+                              const code = p.shortCode || p.name.substring(0, 3).toUpperCase();
+                              return (
+                                <tr key={p.id} className="bg-white">
+                                  <td className="py-2.5 px-3 align-middle">
+                                    <div className="flex items-center gap-2">
+                                      <span className="px-2 py-0.5 rounded bg-green-100 text-green-800 font-extrabold text-xs border border-green-200">
+                                        {code}
+                                      </span>
+                                      <span className="font-bold text-slate-900 text-xs sm:text-sm">
+                                        {p.name}
+                                      </span>
+                                    </div>
+                                    <div className="text-[11px] text-slate-500 mt-0.5">
+                                      Unidad: {p.unit}
+                                    </div>
+                                  </td>
+                                  <td className="py-2.5 px-3 text-right align-middle space-y-1">
+                                    <div className="text-xs font-bold text-slate-800 tabular-nums">
+                                      Venta: {formatCOP(p.defaultSalePrice)}
+                                    </div>
+                                    <div className="text-[11px] text-slate-500 tabular-nums">
+                                      Costo: {formatCOP(p.defaultCostPrice)}
+                                    </div>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setEditingProduct(p);
+                                        setProdFormName(p.name);
+                                        setProdFormCode(code);
+                                        setProdFormUnit(p.unit);
+                                        setProdFormCost(p.defaultCostPrice);
+                                        setProdFormSale(p.defaultSalePrice);
+                                      }}
+                                      className="px-2 py-0.5 rounded bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-[11px] border border-slate-300 cursor-pointer"
+                                    >
+                                      Editar
+                                    </button>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                        </tbody>
+                      </table>
+                    </div>
+
+                    <TablePagination
+                      currentPage={productsPage}
+                      totalItems={state.products.length}
+                      pageSize={PAGE_SIZE}
+                      onPageChange={setProductsPage}
+                    />
                   </div>
                 )}
 
@@ -2365,42 +2534,51 @@ export function App() {
               </div>
 
               {supplierLines.map((line, idx) => {
+                const lineSubtotal =
+                  (supplierActionType === 'PURCHASE'
+                    ? line.deliveredQty
+                    : line.acceptedQty) * line.unitPrice;
+
                 return (
                   <div
                     key={idx}
-                    className="p-3 rounded-xl border border-slate-200 bg-slate-50/60 space-y-2.5"
+                    className="p-2.5 rounded-xl border border-slate-200 bg-slate-50/70 space-y-2"
                   >
+                    {/* Fila superior: Autocomplete con abreviación, subtotal al lado de la lista y botón eliminar */}
                     <div className="flex items-center justify-between gap-2">
-                      <div className="flex-1">
-                        <select
+                      <div className="flex-1 min-w-0">
+                        <SearchableSelect
+                          compact={true}
+                          options={productPickerOptions}
                           value={line.productId}
-                          onChange={(e) => {
-                            const newPid = e.target.value;
-                            const pObj = state.products.find(
-                              (x) => x.id === newPid
-                            );
+                          searchPlaceholder="Escribir abreviación o nombre..."
+                          onChange={(newPid) => {
+                            const pObj = state.products.find((x) => x.id === newPid);
                             setSupplierLines((prev) =>
                               prev.map((item, i) =>
                                 i === idx
                                   ? {
                                       ...item,
                                       productId: newPid,
-                                      unitPrice:
-                                        pObj?.defaultCostPrice || 28000,
+                                      unitPrice: pObj?.defaultCostPrice || 28000,
                                     }
                                   : item
                               )
                             );
                           }}
-                          className="w-full min-h-[38px] px-2.5 py-1 rounded-lg border border-slate-300 bg-white text-xs sm:text-sm font-semibold"
-                        >
-                          {state.products.map((p) => (
-                            <option key={p.id} value={p.id}>
-                              {p.name} ({p.unit}) - Costo: {formatCOP(p.defaultCostPrice)}
-                            </option>
-                          ))}
-                        </select>
+                        />
                       </div>
+
+                      {/* Subtotal puesto al nivel de la lista desplegable */}
+                      <div className="px-2 py-1 rounded-lg bg-green-50 border border-green-200 text-right shrink-0">
+                        <span className="text-[10px] block font-bold uppercase text-green-900 leading-none">
+                          Subtotal
+                        </span>
+                        <strong className="text-xs sm:text-sm font-extrabold text-green-800 tabular-nums">
+                          {formatCOP(lineSubtotal)}
+                        </strong>
+                      </div>
+
                       {supplierLines.length > 1 && (
                         <button
                           type="button"
@@ -2416,107 +2594,87 @@ export function App() {
                       )}
                     </div>
 
-                    <div className="grid grid-cols-12 gap-2 items-end">
-                      <div className="col-span-4">
-                        <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                          {supplierActionType === 'PURCHASE'
-                            ? 'Cantidad'
-                            : 'Entregada'}
-                        </label>
-                        <input
-                          type="number"
-                          inputMode="numeric"
-                          min={1}
-                          className="w-full min-h-[38px] px-2 py-1 rounded-lg border border-slate-300 bg-white text-sm font-extrabold text-center tabular-nums"
-                          value={line.deliveredQty}
-                          onChange={(e) => {
-                            const val = Number(e.target.value);
-                            setSupplierLines((prev) =>
-                              prev.map((item, i) =>
-                                i === idx
-                                  ? {
-                                      ...item,
-                                      deliveredQty: val,
-                                      acceptedQty:
-                                        supplierActionType === 'PURCHASE'
-                                          ? val
-                                          : Math.min(item.acceptedQty, val),
-                                    }
-                                  : item
-                              )
-                            );
-                          }}
-                        />
-                      </div>
-
-                      {supplierActionType === 'RETURN' && (
-                        <div className="col-span-4">
-                          <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                            Aceptada
+                    {/* Fila inferior compacta para Cantidades y Precio */}
+                    <div className="grid grid-cols-12 gap-2 items-center">
+                      <div className={supplierActionType === 'RETURN' ? 'col-span-4' : 'col-span-6'}>
+                        <div className="flex items-center gap-1.5">
+                          <label className="text-[11px] font-bold text-slate-700 shrink-0">
+                            {supplierActionType === 'PURCHASE' ? 'Cant:' : 'Entreg:'}
                           </label>
                           <input
                             type="number"
                             inputMode="numeric"
-                            min={0}
-                            max={line.deliveredQty}
-                            className="w-full min-h-[38px] px-2 py-1 rounded-lg border border-slate-300 bg-white text-sm font-extrabold text-center tabular-nums"
-                            value={line.acceptedQty}
+                            min={1}
+                            className="w-full min-h-[34px] px-2 py-0.5 rounded-lg border border-slate-300 bg-white text-xs sm:text-sm font-extrabold text-center tabular-nums"
+                            value={line.deliveredQty}
                             onChange={(e) => {
                               const val = Number(e.target.value);
                               setSupplierLines((prev) =>
                                 prev.map((item, i) =>
-                                  i === idx ? { ...item, acceptedQty: val } : item
+                                  i === idx
+                                    ? {
+                                        ...item,
+                                        deliveredQty: val,
+                                        acceptedQty:
+                                          supplierActionType === 'PURCHASE'
+                                            ? val
+                                            : Math.min(item.acceptedQty, val),
+                                      }
+                                    : item
                                 )
                               );
                             }}
                           />
                         </div>
-                      )}
-
-                      <div
-                        className={
-                          supplierActionType === 'PURCHASE'
-                            ? 'col-span-4'
-                            : 'col-span-4'
-                        }
-                      >
-                        <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                          Costo Unit. ($)
-                        </label>
-                        <input
-                          type="number"
-                          inputMode="decimal"
-                          min={0}
-                          className="w-full min-h-[38px] px-2 py-1 rounded-lg border border-slate-300 bg-white text-xs sm:text-sm font-extrabold text-center tabular-nums"
-                          value={line.unitPrice}
-                          onChange={(e) => {
-                            const val = Number(e.target.value);
-                            setSupplierLines((prev) =>
-                              prev.map((item, i) =>
-                                i === idx ? { ...item, unitPrice: val } : item
-                              )
-                            );
-                          }}
-                        />
                       </div>
 
-                      <div
-                        className={
-                          supplierActionType === 'PURCHASE'
-                            ? 'col-span-4 p-1.5 rounded-lg bg-green-50 border border-green-200 text-right'
-                            : 'col-span-12 p-1.5 rounded-lg bg-amber-50 border border-amber-200 flex justify-between items-center'
-                        }
-                      >
-                        <span className="text-[10px] font-bold uppercase text-slate-700">
-                          Subtotal:
-                        </span>
-                        <strong className="text-xs sm:text-sm font-extrabold text-slate-900 tabular-nums">
-                          {formatCOP(
-                            (supplierActionType === 'PURCHASE'
-                              ? line.deliveredQty
-                              : line.acceptedQty) * line.unitPrice
-                          )}
-                        </strong>
+                      {supplierActionType === 'RETURN' && (
+                        <div className="col-span-4">
+                          <div className="flex items-center gap-1.5">
+                            <label className="text-[11px] font-bold text-slate-700 shrink-0">
+                              Acept:
+                            </label>
+                            <input
+                              type="number"
+                              inputMode="numeric"
+                              min={0}
+                              max={line.deliveredQty}
+                              className="w-full min-h-[34px] px-2 py-0.5 rounded-lg border border-slate-300 bg-white text-xs sm:text-sm font-extrabold text-center tabular-nums"
+                              value={line.acceptedQty}
+                              onChange={(e) => {
+                                const val = Number(e.target.value);
+                                setSupplierLines((prev) =>
+                                  prev.map((item, i) =>
+                                    i === idx ? { ...item, acceptedQty: val } : item
+                                  )
+                                );
+                              }}
+                            />
+                          </div>
+                        </div>
+                      )}
+
+                      <div className={supplierActionType === 'RETURN' ? 'col-span-4' : 'col-span-6'}>
+                        <div className="flex items-center gap-1.5">
+                          <label className="text-[11px] font-bold text-slate-700 shrink-0">
+                            Costo:
+                          </label>
+                          <input
+                            type="number"
+                            inputMode="decimal"
+                            min={0}
+                            className="w-full min-h-[34px] px-2 py-0.5 rounded-lg border border-slate-300 bg-white text-xs sm:text-sm font-extrabold text-center tabular-nums"
+                            value={line.unitPrice}
+                            onChange={(e) => {
+                              const val = Number(e.target.value);
+                              setSupplierLines((prev) =>
+                                prev.map((item, i) =>
+                                  i === idx ? { ...item, unitPrice: val } : item
+                                )
+                              );
+                            }}
+                          />
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -2994,21 +3152,22 @@ export function App() {
               </div>
 
               {saleLines.map((line, idx) => {
-                const prod = state.products.find((p) => p.id === line.productId);
+                const lineSubtotal = line.quantity * line.unitPrice;
                 return (
                   <div
                     key={idx}
-                    className="p-3 rounded-xl border border-slate-200 bg-slate-50/70 space-y-2"
+                    className="p-2.5 rounded-xl border border-slate-200 bg-slate-50/70 space-y-2"
                   >
+                    {/* Fila superior: Autocomplete con abreviación, subtotal al lado de la lista y botón eliminar */}
                     <div className="flex items-center justify-between gap-2">
-                      <div className="flex-1">
-                        <select
+                      <div className="flex-1 min-w-0">
+                        <SearchableSelect
+                          compact={true}
+                          options={productPickerOptions}
                           value={line.productId}
-                          onChange={(e) => {
-                            const newPid = e.target.value;
-                            const pObj = state.products.find(
-                              (x) => x.id === newPid
-                            );
+                          searchPlaceholder="Escribir abreviación o nombre..."
+                          onChange={(newPid) => {
+                            const pObj = state.products.find((x) => x.id === newPid);
                             const usesCr = pObj?.unit
                               .toLowerCase()
                               .includes('canastilla') ?? false;
@@ -3018,8 +3177,7 @@ export function App() {
                                   ? {
                                       ...item,
                                       productId: newPid,
-                                      unitPrice:
-                                        pObj?.defaultSalePrice || 38000,
+                                      unitPrice: pObj?.defaultSalePrice || 38000,
                                       autoLeaveCrates: usesCr,
                                       cratesCount: usesCr ? item.quantity : 0,
                                     }
@@ -3027,15 +3185,19 @@ export function App() {
                               )
                             );
                           }}
-                          className="w-full min-h-[38px] px-2.5 py-1 rounded-lg border border-slate-300 bg-white text-xs sm:text-sm font-semibold"
-                        >
-                          {state.products.map((p) => (
-                            <option key={p.id} value={p.id}>
-                              {p.name} ({p.unit}) - {formatCOP(p.defaultSalePrice)}
-                            </option>
-                          ))}
-                        </select>
+                        />
                       </div>
+
+                      {/* Subtotal puesto al nivel de la lista desplegable */}
+                      <div className="px-2 py-1 rounded-lg bg-green-50 border border-green-200 text-right shrink-0">
+                        <span className="text-[10px] block font-bold uppercase text-green-900 leading-none">
+                          Subtotal
+                        </span>
+                        <strong className="text-xs sm:text-sm font-extrabold text-green-800 tabular-nums">
+                          {formatCOP(lineSubtotal)}
+                        </strong>
+                      </div>
+
                       {saleLines.length > 1 && (
                         <button
                           type="button"
@@ -3051,69 +3213,65 @@ export function App() {
                       )}
                     </div>
 
-                    <div className="grid grid-cols-12 gap-2 items-end">
-                      <div className="col-span-4">
-                        <label className="block text-[11px] font-bold text-slate-700 mb-0.5">
-                          Cantidad ({prod?.unit ?? 'und'})
-                        </label>
-                        <input
-                          type="number"
-                          inputMode="numeric"
-                          min={1}
-                          className="w-full min-h-[38px] px-2 py-1 rounded-lg border border-slate-300 bg-white text-sm font-extrabold text-center tabular-nums"
-                          value={line.quantity}
-                          onChange={(e) => {
-                            const val = Number(e.target.value);
-                            setSaleLines((prev) =>
-                              prev.map((item, i) =>
-                                i === idx
-                                  ? {
-                                      ...item,
-                                      quantity: val,
-                                      cratesCount: item.autoLeaveCrates
-                                        ? val
-                                        : item.cratesCount,
-                                    }
-                                  : item
-                              )
-                            );
-                          }}
-                        />
+                    {/* Fila inferior compacta para Cantidad y Precio */}
+                    <div className="grid grid-cols-12 gap-2 items-center">
+                      <div className="col-span-6">
+                        <div className="flex items-center gap-1.5">
+                          <label className="text-[11px] font-bold text-slate-700 shrink-0">
+                            Cant:
+                          </label>
+                          <input
+                            type="number"
+                            inputMode="numeric"
+                            min={1}
+                            className="w-full min-h-[34px] px-2 py-0.5 rounded-lg border border-slate-300 bg-white text-xs sm:text-sm font-extrabold text-center tabular-nums"
+                            value={line.quantity}
+                            onChange={(e) => {
+                              const val = Number(e.target.value);
+                              setSaleLines((prev) =>
+                                prev.map((item, i) =>
+                                  i === idx
+                                    ? {
+                                        ...item,
+                                        quantity: val,
+                                        cratesCount: item.autoLeaveCrates
+                                          ? val
+                                          : item.cratesCount,
+                                      }
+                                    : item
+                                )
+                              );
+                            }}
+                          />
+                        </div>
                       </div>
 
-                      <div className="col-span-4">
-                        <label className="block text-[11px] font-bold text-slate-700 mb-0.5">
-                          Precio ($)
-                        </label>
-                        <input
-                          type="number"
-                          inputMode="decimal"
-                          min={0}
-                          className="w-full min-h-[38px] px-2 py-1 rounded-lg border border-slate-300 bg-white text-xs sm:text-sm font-extrabold text-center tabular-nums"
-                          value={line.unitPrice}
-                          onChange={(e) => {
-                            const val = Number(e.target.value);
-                            setSaleLines((prev) =>
-                              prev.map((item, i) =>
-                                i === idx ? { ...item, unitPrice: val } : item
-                              )
-                            );
-                          }}
-                        />
-                      </div>
-
-                      <div className="col-span-4 p-1.5 rounded-lg bg-green-50 border border-green-200 text-right">
-                        <span className="block text-[10px] font-bold uppercase text-green-900">
-                          Subtotal
-                        </span>
-                        <strong className="text-xs sm:text-sm font-extrabold text-green-800 tabular-nums">
-                          {formatCOP(line.quantity * line.unitPrice)}
-                        </strong>
+                      <div className="col-span-6">
+                        <div className="flex items-center gap-1.5">
+                          <label className="text-[11px] font-bold text-slate-700 shrink-0">
+                            Precio:
+                          </label>
+                          <input
+                            type="number"
+                            inputMode="decimal"
+                            min={0}
+                            className="w-full min-h-[34px] px-2 py-0.5 rounded-lg border border-slate-300 bg-white text-xs sm:text-sm font-extrabold text-center tabular-nums"
+                            value={line.unitPrice}
+                            onChange={(e) => {
+                              const val = Number(e.target.value);
+                              setSaleLines((prev) =>
+                                prev.map((item, i) =>
+                                  i === idx ? { ...item, unitPrice: val } : item
+                                )
+                              );
+                            }}
+                          />
+                        </div>
                       </div>
                     </div>
 
                     {/* Deuda automática de canastillas por línea de producto */}
-                    <label className="flex items-center gap-2 text-xs font-semibold text-slate-700 cursor-pointer pt-1">
+                    <label className="flex items-center gap-2 text-xs font-semibold text-slate-700 cursor-pointer pt-0.5">
                       <input
                         type="checkbox"
                         className="w-3.5 h-3.5 accent-blue-700 rounded"

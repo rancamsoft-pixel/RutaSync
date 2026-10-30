@@ -58,6 +58,7 @@ export interface ProductCatalogItem {
   id: string;
   businessId: string;
   name: string;
+  shortCode?: string; // Abreviación corta para operarios en ruta (ej: "B1", "BC", "PL")
   unit: string; // Ej: "Caja", "Racimo", "Kg", "Canastilla"
   defaultCostPrice: number;
   defaultSalePrice: number;

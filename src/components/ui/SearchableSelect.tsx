@@ -10,11 +10,12 @@ export interface SearchableOption {
 }
 
 export interface SearchableSelectProps {
-  label: string;
+  label?: string;
   options: SearchableOption[];
   value: string;
   onChange: (id: string) => void;
   searchPlaceholder?: string;
+  compact?: boolean;
 }
 
 export const SearchableSelect: React.FC<SearchableSelectProps> = ({
@@ -22,7 +23,8 @@ export const SearchableSelect: React.FC<SearchableSelectProps> = ({
   options,
   value,
   onChange,
-  searchPlaceholder = 'Buscar por nombre...',
+  searchPlaceholder = 'Buscar...',
+  compact = false,
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [query, setQuery] = useState('');
@@ -57,84 +59,90 @@ export const SearchableSelect: React.FC<SearchableSelectProps> = ({
   };
 
   return (
-    <div className="w-full">
-      <div className="flex items-center justify-between mb-1">
-        <label className="block text-sm font-bold text-slate-800">
-          {label}
-        </label>
-        <span className="text-xs font-medium text-slate-500">
-          {options.length} disponibles
-        </span>
-      </div>
+    <div className="w-full relative">
+      {label && (
+        <div className="flex items-center justify-between mb-1">
+          <label className="block text-sm font-bold text-slate-800">
+            {label}
+          </label>
+          <span className="text-xs font-medium text-slate-500">
+            {options.length} disponibles
+          </span>
+        </div>
+      )}
 
-      {/* Botón compacto que muestra solo el seleccionado actual */}
+      {/* Botón selector: en modo compact es más bajito y muestra abreviación / label */}
       <button
         type="button"
         onClick={() => setIsOpen((prev) => !prev)}
-        className={`w-full min-h-[50px] px-3.5 py-2 rounded-xl border text-left flex items-center justify-between gap-2 transition-colors cursor-pointer ${
-          isOpen
-            ? 'bg-green-50/70 border-green-600 ring-2 ring-green-600/20'
-            : 'bg-white border-slate-300 hover:bg-slate-50'
+        className={`w-full rounded-xl border text-left flex items-center justify-between gap-1.5 transition-colors cursor-pointer ${
+          compact
+            ? 'min-h-[38px] px-2.5 py-1 text-xs bg-white border-slate-300 hover:bg-slate-50'
+            : 'min-h-[50px] px-3.5 py-2 text-sm sm:text-base ' +
+              (isOpen
+                ? 'bg-green-50/70 border-green-600 ring-2 ring-green-600/20'
+                : 'bg-white border-slate-300 hover:bg-slate-50')
         }`}
       >
-        <div className="min-w-0 flex-1">
-          <div className="text-sm sm:text-base font-bold text-slate-900 truncate">
+        <div className="min-w-0 flex-1 flex items-center gap-1.5">
+          <div className="font-bold text-slate-900 truncate">
             {selectedOption?.label ?? 'Seleccionar...'}
           </div>
-          {selectedOption?.sublabel && (
+          {!compact && selectedOption?.sublabel && (
             <div className="text-xs text-slate-500 truncate">
               {selectedOption.sublabel}
             </div>
           )}
         </div>
 
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex items-center gap-1.5 shrink-0">
           {selectedOption?.badgeText && (
             <span
-              className={`text-xs font-bold px-2 py-0.5 rounded-lg border tabular-nums ${getBadgeClasses(
-                selectedOption.badgeTone
-              )}`}
+              className={`font-bold px-1.5 py-0.5 rounded border tabular-nums ${
+                compact ? 'text-[11px]' : 'text-xs'
+              } ${getBadgeClasses(selectedOption.badgeTone)}`}
             >
               {selectedOption.badgeText}
             </span>
           )}
-          <span className="w-7 h-7 rounded-lg bg-slate-100 text-slate-600 flex items-center justify-center">
+          <span className="w-5 h-5 rounded text-slate-500 flex items-center justify-center">
             {isOpen ? (
-              <ChevronUp className="w-4 h-4" />
+              <ChevronUp className="w-3.5 h-3.5" />
             ) : (
-              <ChevronDown className="w-4 h-4" />
+              <ChevronDown className="w-3.5 h-3.5" />
             )}
           </span>
         </div>
       </button>
 
-      {/* Panel desplegable con buscador para 70+ clientes o múltiples productos */}
+      {/* Panel desplegable con buscador rápido tipo autocomplete */}
       {isOpen && (
-        <div className="mt-1.5 rounded-xl border border-slate-300 bg-white shadow-lg overflow-hidden">
-          <div className="p-2 border-b border-slate-100 bg-slate-50 flex items-center gap-2">
-            <Search className="w-4 h-4 text-slate-400 shrink-0 ml-1" />
+        <div className="absolute top-full left-0 right-0 z-50 mt-1 rounded-xl border border-slate-300 bg-white shadow-xl overflow-hidden">
+          <div className="p-1.5 border-b border-slate-100 bg-slate-50 flex items-center gap-1.5">
+            <Search className="w-3.5 h-3.5 text-slate-400 shrink-0 ml-1" />
             <input
               type="text"
+              autoFocus
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder={searchPlaceholder}
-              className="w-full bg-transparent text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none py-1"
+              className="w-full bg-transparent text-xs sm:text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none py-0.5"
             />
             {query && (
               <button
                 type="button"
                 onClick={() => setQuery('')}
-                className="p-1 text-slate-400 hover:text-slate-600 cursor-pointer"
+                className="p-0.5 text-slate-400 hover:text-slate-600 cursor-pointer"
               >
-                <X className="w-4 h-4" />
+                <X className="w-3.5 h-3.5" />
               </button>
             )}
           </div>
 
           <div className="max-h-48 overflow-y-auto divide-y divide-slate-100">
             {filteredOptions.length === 0 ? (
-              <div className="p-3 text-center text-xs text-slate-500">
-                No se encontraron coincidencias para "{query}"
+              <div className="p-2.5 text-center text-xs text-slate-500">
+                Sin coincidencias para "{query}"
               </div>
             ) : (
               filteredOptions.map((opt) => {
@@ -148,22 +156,22 @@ export const SearchableSelect: React.FC<SearchableSelectProps> = ({
                       setIsOpen(false);
                       setQuery('');
                     }}
-                    className={`w-full px-3.5 py-2.5 text-left flex items-center justify-between gap-2 transition-colors cursor-pointer ${
+                    className={`w-full px-2.5 py-2 text-left flex items-center justify-between gap-1.5 transition-colors cursor-pointer ${
                       isSelected
                         ? 'bg-green-50 text-green-950 font-bold'
                         : 'hover:bg-slate-50 text-slate-800'
                     }`}
                   >
-                    <div className="min-w-0 flex-1 flex items-center gap-2">
+                    <div className="min-w-0 flex-1 flex items-center gap-1.5">
                       {isSelected && (
-                        <Check className="w-4 h-4 text-green-700 shrink-0" />
+                        <Check className="w-3.5 h-3.5 text-green-700 shrink-0" />
                       )}
                       <div className="min-w-0">
-                        <div className="text-sm font-semibold truncate">
+                        <div className="text-xs sm:text-sm font-semibold truncate">
                           {opt.label}
                         </div>
                         {opt.sublabel && (
-                          <div className="text-xs text-slate-500 truncate">
+                          <div className="text-[11px] text-slate-500 truncate">
                             {opt.sublabel}
                           </div>
                         )}
@@ -172,7 +180,7 @@ export const SearchableSelect: React.FC<SearchableSelectProps> = ({
 
                     {opt.badgeText && (
                       <span
-                        className={`text-xs font-bold px-2 py-0.5 rounded-md border shrink-0 tabular-nums ${getBadgeClasses(
+                        className={`text-[11px] font-bold px-1.5 py-0.5 rounded border shrink-0 tabular-nums ${getBadgeClasses(
                           opt.badgeTone
                         )}`}
                       >
