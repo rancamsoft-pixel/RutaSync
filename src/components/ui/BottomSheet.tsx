@@ -8,6 +8,7 @@ export interface BottomSheetProps {
   subtitle?: string;
   icon?: React.ReactNode;
   headerExtra?: React.ReactNode;
+  size?: 'default' | 'large';
   children: React.ReactNode;
 }
 
@@ -18,6 +19,7 @@ export const BottomSheet: React.FC<BottomSheetProps> = ({
   subtitle,
   icon,
   headerExtra,
+  size = 'default',
   children,
 }) => {
   useEffect(() => {
@@ -33,7 +35,7 @@ export const BottomSheet: React.FC<BottomSheetProps> = ({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/65 backdrop-blur-[2px] p-3 sm:p-4 overflow-hidden"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/65 backdrop-blur-[2px] p-2 sm:p-4 overflow-hidden"
       role="dialog"
       aria-modal="true"
       aria-labelledby="bottom-sheet-title"
@@ -41,8 +43,14 @@ export const BottomSheet: React.FC<BottomSheetProps> = ({
         if (e.target === e.currentTarget) onClose();
       }}
     >
-      {/* Modal siempre centrado y con alto constante (h-[540px] max-h-[86dvh]) para que no se agrande ni se encoja al cambiar de tab */}
-      <div className="w-full max-w-lg h-[540px] max-h-[86dvh] bg-white rounded-2xl shadow-2xl border border-slate-200 flex flex-col overflow-hidden">
+      {/* Modal centrado. En modo 'large' tiene mayor altura (h-[650px] max-h-[92dvh] max-w-xl) para formularios con múltiples productos */}
+      <div
+        className={`w-full bg-white rounded-2xl shadow-2xl border border-slate-200 flex flex-col overflow-hidden transition-all duration-200 ${
+          size === 'large'
+            ? 'max-w-xl h-[650px] max-h-[92dvh]'
+            : 'max-w-lg h-[540px] max-h-[86dvh]'
+        }`}
+      >
         {/* Cabecera compacta */}
         <div className="px-4 py-3 border-b border-slate-100 bg-white shrink-0 space-y-2.5">
           <div className="flex items-center justify-between gap-2.5">

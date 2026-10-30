@@ -171,10 +171,50 @@ export function App() {
     text: string;
   } | null>(null);
 
+  const [showRealTimeSummaryAccordion, setShowRealTimeSummaryAccordion] =
+    useState<boolean>(false);
+
   // Modal de Venta o Gasto abierto desde el botón circular flotante (+)
   const [fabModalType, setFabModalType] = useState<'SALE' | 'EXPENSE' | null>(
     null
   );
+
+  // Modal para Comprar / Devolver / Canastillas con Proveedor (soporta múltiples productos)
+  const [supplierModalMode, setSupplierModalMode] = useState<
+    'BUY_RETURN' | 'RETURN_CRATES' | null
+  >(null);
+  const [supplierActionType, setSupplierActionType] = useState<
+    'PURCHASE' | 'RETURN'
+  >('PURCHASE');
+  const [supplierLines, setSupplierLines] = useState<
+    Array<{
+      productId: string;
+      deliveredQty: number;
+      acceptedQty: number;
+      unitPrice: number;
+      compensationType: SupplierCompensationType;
+    }>
+  >([]);
+  const [supplierReturnCratesQty, setSupplierReturnCratesQty] =
+    useState<number>(0);
+
+  // Modal para Cobrar Fiado ($) o Recibir Envases de Cliente
+  const [clientModalMode, setClientModalMode] = useState<
+    'COLLECT_DEBT' | 'RETURN_CRATES' | null
+  >(null);
+
+  // Líneas múltiples de productos para el modal de Venta
+  const [saleLines, setSaleLines] = useState<
+    Array<{
+      productId: string;
+      quantity: number;
+      unitPrice: number;
+      autoLeaveCrates: boolean;
+      cratesCount: number;
+    }>
+  >([]);
+  // Canastillas devueltas inmediatamente por el cliente en la misma venta (no deja deuda)
+  const [saleReturnedCratesNow, setSaleReturnedCratesNow] = useState<number>(0);
 
   // Campos compartidos de formularios (Venta, Gasto, Compra, Devolución, Cobro, Canastillas)
   const [opProductId, setOpProductId] = useState<string>('PROD-BANANO-PRIMERA');
@@ -418,18 +458,79 @@ export function App() {
   const openFabModal = (type: 'SALE' | 'EXPENSE') => {
     setFeedback(null);
     const defaultProd = state.products[0];
-    setOpProductId(defaultProd.id);
-    setOpQuantity(5);
-    setOpUnitPrice(defaultProd.defaultSalePrice);
-    const prodUsesCrates = defaultProd.unit
+    const prodUsesCrates = defaultProd?.unit
       .toLowerCase()
-      .includes('canastilla');
+      .includes('canastilla') ?? false;
+
+    // Inicializa la primera línea para la venta de productos múltiples
+    setSaleLines([
+      {
+        productId: defaultProd?.id || 'PROD-BANANO-PRIMERA',
+        quantity: 5,
+        unitPrice: defaultProd?.defaultSalePrice || 38000,
+        autoLeaveCrates: prodUsesCrates,
+        cratesCount: prodUsesCrates ? 5 : 0,
+      },
+    ]);
+    setSaleReturnedCratesNow(0);
+
+    setOpProductId(defaultProd?.id || 'PROD-BANANO-PRIMERA');
+    setOpQuantity(5);
+    setOpUnitPrice(defaultProd?.defaultSalePrice || 38000);
     setOpAutoLeaveCrates(prodUsesCrates);
     setOpAutoCratesCount(5);
     setOpPaymentMethod('CASH');
     setOpPaidImmediate(0);
     setOpNotes('');
     setFabModalType(type);
+  };
+
+  // Abre el modal de Compra / Devolución a Proveedor
+  const openSupplierModal = (
+    supId: string,
+    mode: 'BUY_RETURN' | 'RETURN_CRATES',
+    action: 'PURCHASE' | 'RETURN' = 'PURCHASE'
+  ) => {
+    setFeedback(null);
+    setOpSupplierId(supId);
+    setSupplierModalMode(mode);
+    setSupplierActionType(action);
+    setSupplierReturnCratesQty(0);
+
+    const defaultProd = state.products[0];
+    setSupplierLines([
+      {
+        productId: defaultProd?.id || 'PROD-BANANO-PRIMERA',
+        deliveredQty: action === 'PURCHASE' ? 5 : 2,
+        acceptedQty: action === 'PURCHASE' ? 5 : 2,
+        unitPrice: defaultProd?.defaultCostPrice || 28000,
+        compensationType: 'CREDIT_BALANCE',
+      },
+    ]);
+  };
+
+  // Abre el modal de Cobro o Recepción de Canastillas de Cliente
+  const openClientModal = (
+    cliId: string,
+    mode: 'COLLECT_DEBT' | 'RETURN_CRATES'
+  ) => {
+    setFeedback(null);
+    setOpClientId(cliId);
+    setClientModalMode(mode);
+
+    const bal = clientBalances.find((b) => b.client.id === cliId);
+    if (mode === 'COLLECT_DEBT') {
+      const suggestedAmount =
+        bal?.totalMoneyDebt && bal.totalMoneyDebt > 0
+          ? bal.totalMoneyDebt
+          : 50000;
+      setOpCollectionAmount(suggestedAmount);
+      setOpCollectionInterest(bal?.remainingPastInterest ?? 0);
+      setOpCollectionKind(bal?.remainingPastPrincipal ? 'PAST' : 'CURRENT');
+    } else {
+      setOpQuantity(Math.max(1, bal?.totalCratesOwed ?? 1));
+      setOpCrateType('RETURNED_BY_CLIENT');
+    }
   };
 
   // Ejecuta el guardado de cualquier operación (desde el modal FAB o desde los tabs de Proveedores/Clientes)
@@ -581,6 +682,8 @@ export function App() {
       }
 
       setFabModalType(null);
+      setSupplierModalMode(null);
+      setClientModalMode(null);
       setOpNotes('');
       const updatedPreview = coreService.getShiftReconciliationPreview(
         activeShift.id
@@ -743,7 +846,8 @@ export function App() {
     () =>
       state.products.map((p) => {
         const isPurchase =
-          activeTab === 'SUPPLIERS' && supplierSubTab === 'PURCHASE_FORM';
+          supplierModalMode === 'BUY_RETURN' &&
+          supplierActionType === 'PURCHASE';
         const price = isPurchase ? p.defaultCostPrice : p.defaultSalePrice;
         return {
           id: p.id,
@@ -753,7 +857,7 @@ export function App() {
           badgeTone: 'green' as const,
         };
       }),
-    [state.products, activeTab, supplierSubTab]
+    [state.products, supplierModalMode, supplierActionType]
   );
 
   const clientPickerOptions = useMemo(
@@ -926,97 +1030,171 @@ export function App() {
              ==================================================================== */}
           {activeTab === 'OPERATE' && activeShift && reconciliation && (
             <main className="space-y-4">
-              {/* Tarjeta principal de la Jornada + Botón Cerrar Día + 4 KPIs */}
-              <section className="bg-white border border-slate-200 rounded-2xl p-4 sm:p-5 shadow-xs space-y-4">
-                <div className="flex items-start justify-between gap-3 flex-wrap">
-                  <div className="flex items-center gap-3 min-w-0">
-                    <div className="w-11 h-11 rounded-xl bg-green-50 text-green-700 border border-green-100 flex items-center justify-center shrink-0">
-                      <Calendar className="w-5 h-5" />
+              {/* Tarjeta superior con Acordeón: Resumen en Tiempo Real / KPIs de Ruta */}
+              <section className="bg-white border border-slate-200 rounded-2xl p-4 sm:p-5 shadow-xs space-y-3.5">
+                {/* Fila superior: Jornada, Estado, Vehículo y Botón compacto de Cierre */}
+                <div className="flex items-center justify-between gap-2.5 flex-wrap">
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <div className="w-9 h-9 rounded-xl bg-green-50 text-green-700 border border-green-100 flex items-center justify-center shrink-0">
+                      <Calendar className="w-4 h-4" />
                     </div>
                     <div className="min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <h2 className="text-lg sm:text-xl font-bold text-slate-900">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="text-sm sm:text-base font-extrabold text-slate-900 truncate">
                           Jornada {activeShift.operatingDate}
-                        </h2>
+                        </span>
                         {activeShift.status === 'OPEN' ? (
-                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-green-50 text-green-800 border border-green-200">
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-green-50 text-green-800 border border-green-200">
                             <span className="w-1.5 h-1.5 rounded-full bg-green-600" />
                             Abierta
                           </span>
                         ) : (
-                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-slate-100 text-slate-800 border border-slate-300">
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-slate-100 text-slate-800 border border-slate-300">
                             <Lock className="w-3 h-3" />
                             Cerrada
                           </span>
                         )}
                       </div>
-                      <p className="text-xs sm:text-sm text-slate-600 truncate">
-                        {activeShift.vehicle} · Resp:{' '}
-                        <strong className="text-slate-800">
-                          {activeShift.responsibleUserName}
-                        </strong>
-                      </p>
+                      <div className="text-xs text-slate-600 truncate">
+                        Camión: <strong className="text-slate-800">{activeShift.vehicle}</strong> · Resp: <strong className="text-slate-800">{activeShift.responsibleUserName}</strong>
+                      </div>
                     </div>
                   </div>
 
+                  {/* Botón arriba compacto que no ocupe tanto espacio */}
                   <button
                     type="button"
                     onClick={() => setClosureModalOpen(true)}
-                    className={`w-full sm:w-auto min-h-[48px] px-4 py-2.5 rounded-xl font-bold text-sm flex items-center justify-center gap-2 shadow-2xs transition-colors cursor-pointer ${
+                    className={`min-h-[38px] px-3 py-1.5 rounded-xl font-bold text-xs flex items-center gap-1.5 shadow-2xs transition-colors cursor-pointer shrink-0 ${
                       activeShift.status === 'OPEN'
                         ? 'bg-slate-900 hover:bg-slate-800 text-white'
                         : 'bg-green-700 hover:bg-green-800 text-white'
                     }`}
                   >
-                    <Lock className="w-4 h-4 shrink-0" />
+                    <Lock className="w-3.5 h-3.5 shrink-0" />
                     <span>
                       {activeShift.status === 'OPEN'
-                        ? 'Cerrar Día / Arqueo'
-                        : 'Ver Cierre / Abrir Nueva Jornada'}
+                        ? 'Cerrar Día'
+                        : 'Ver Cierre'}
                     </span>
                   </button>
                 </div>
 
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 pt-2 border-t border-slate-100">
-                  <div className="p-3 rounded-xl bg-green-50/90 border border-green-200">
-                    <span className="block text-xs font-semibold text-green-900">
-                      Efectivo en caja
-                    </span>
-                    <strong className="text-lg sm:text-xl font-extrabold text-green-800 tabular-nums">
-                      {formatCOP(reconciliation.financials.expectedCashInBox)}
-                    </strong>
-                  </div>
-
-                  <div className="p-3 rounded-xl bg-slate-50 border border-slate-200">
-                    <span className="block text-xs font-medium text-slate-600">
-                      Ventas de hoy
-                    </span>
-                    <strong className="text-lg sm:text-xl font-bold text-slate-900 tabular-nums">
-                      {formatCOP(reconciliation.financials.totalSalesAmount)}
-                    </strong>
-                  </div>
-
-                  <div className="p-3 rounded-xl bg-amber-50/70 border border-amber-200">
-                    <span className="block text-xs font-medium text-amber-900">
-                      Fiados hoy
-                    </span>
-                    <strong className="text-lg sm:text-xl font-bold text-amber-800 tabular-nums">
-                      {formatCOP(
-                        reconciliation.financials
-                          .pendingReceivablesFromCurrentSales
-                      )}
-                    </strong>
-                  </div>
-
-                  <div className="p-3 rounded-xl bg-blue-50/70 border border-blue-200">
-                    <span className="block text-xs font-medium text-blue-900">
-                      Utilidad neta
-                    </span>
-                    <strong className="text-lg sm:text-xl font-bold text-blue-800 tabular-nums">
-                      {formatCOP(reconciliation.financials.economicNetProfit)}
-                    </strong>
-                  </div>
+                {/* Selector tipo acordeón entre la vista de 'Resumen en Tiempo Real' y 'KPIs Operativos' */}
+                <div className="flex items-center p-1 rounded-xl bg-slate-100 border border-slate-200 text-xs font-bold">
+                  <button
+                    type="button"
+                    onClick={() => setShowRealTimeSummaryAccordion(true)}
+                    className={`flex-1 py-1.5 px-2 rounded-lg text-center transition-colors cursor-pointer ${
+                      showRealTimeSummaryAccordion
+                        ? 'bg-white text-green-800 shadow-2xs'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    Resumen en Tiempo Real
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowRealTimeSummaryAccordion(false)}
+                    className={`flex-1 py-1.5 px-2 rounded-lg text-center transition-colors cursor-pointer ${
+                      !showRealTimeSummaryAccordion
+                        ? 'bg-white text-green-800 shadow-2xs'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    Indicadores Rápidos (KPIs)
+                  </button>
                 </div>
+
+                {/* VISTA A (FOTO): Resumen en Tiempo Real */}
+                {showRealTimeSummaryAccordion ? (
+                  <div className="space-y-2.5 pt-1">
+                    <div className="space-y-1.5 text-xs sm:text-sm">
+                      <div className="flex justify-between items-center py-1.5 border-b border-slate-100">
+                        <span className="text-slate-600">Ventas del día:</span>
+                        <strong className="text-sm sm:text-base font-bold text-slate-900 tabular-nums">
+                          {formatCOP(reconciliation.financials.totalSalesAmount)}
+                        </strong>
+                      </div>
+                      <div className="flex justify-between items-center py-1.5 border-b border-slate-100">
+                        <span className="text-slate-600">Fiados de hoy pendientes:</span>
+                        <strong className="text-sm sm:text-base font-bold text-amber-700 tabular-nums">
+                          {formatCOP(
+                            reconciliation.financials
+                              .pendingReceivablesFromCurrentSales
+                          )}
+                        </strong>
+                      </div>
+                      <div className="flex justify-between items-center py-1.5 border-b border-slate-100">
+                        <span className="text-slate-600">Cobros deuda anterior:</span>
+                        <strong className="text-sm sm:text-base font-bold text-blue-700 tabular-nums">
+                          {formatCOP(
+                            reconciliation.financials.totalPastDebtCollected
+                          )}
+                        </strong>
+                      </div>
+                      <div className="flex justify-between items-center py-1.5 border-b border-slate-100">
+                        <span className="text-slate-600">Ganancia Neta (Utilidad):</span>
+                        <strong className="text-sm sm:text-base font-bold text-green-700 tabular-nums">
+                          {formatCOP(
+                            reconciliation.financials.economicNetProfit
+                          )}
+                        </strong>
+                      </div>
+                    </div>
+
+                    <div className="p-3 rounded-xl bg-green-50/90 border border-green-200 flex justify-between items-center">
+                      <span className="text-xs sm:text-sm font-semibold text-green-950">
+                        Efectivo físico esperado:
+                      </span>
+                      <strong className="text-base sm:text-xl font-extrabold text-green-800 tabular-nums">
+                        {formatCOP(reconciliation.financials.expectedCashInBox)}
+                      </strong>
+                    </div>
+                  </div>
+                ) : (
+                  /* VISTA B: Otros KPIs de Ruta */
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 pt-1">
+                    <div className="p-3 rounded-xl bg-green-50/90 border border-green-200">
+                      <span className="block text-xs font-semibold text-green-900">
+                        Efectivo en caja
+                      </span>
+                      <strong className="text-base sm:text-lg font-extrabold text-green-800 tabular-nums">
+                        {formatCOP(reconciliation.financials.expectedCashInBox)}
+                      </strong>
+                    </div>
+
+                    <div className="p-3 rounded-xl bg-slate-50 border border-slate-200">
+                      <span className="block text-xs font-medium text-slate-600">
+                        Ventas de hoy
+                      </span>
+                      <strong className="text-base sm:text-lg font-bold text-slate-900 tabular-nums">
+                        {formatCOP(reconciliation.financials.totalSalesAmount)}
+                      </strong>
+                    </div>
+
+                    <div className="p-3 rounded-xl bg-amber-50/70 border border-amber-200">
+                      <span className="block text-xs font-medium text-amber-900">
+                        Fiados hoy
+                      </span>
+                      <strong className="text-base sm:text-lg font-bold text-amber-800 tabular-nums">
+                        {formatCOP(
+                          reconciliation.financials
+                            .pendingReceivablesFromCurrentSales
+                        )}
+                      </strong>
+                    </div>
+
+                    <div className="p-3 rounded-xl bg-blue-50/70 border border-blue-200">
+                      <span className="block text-xs font-medium text-blue-900">
+                        Utilidad neta
+                      </span>
+                      <strong className="text-base sm:text-lg font-bold text-blue-800 tabular-nums">
+                        {formatCOP(reconciliation.financials.economicNetProfit)}
+                      </strong>
+                    </div>
+                  </div>
+                )}
               </section>
 
               {/* UNA SOLA SECCIÓN UNIFICADA CON 4 TABS */}
@@ -1406,7 +1584,7 @@ export function App() {
 
           {/* ====================================================================
               VISTA 2: COMPRAS Y DEVOLUCIONES (PROVEEDORES)
-              Una sola sección con 4 Tabs + Tabla de Proveedores de 2 columnas con paginación
+              Una sola sección unificada con Tabla de Proveedores y Modales Ágiles
              ==================================================================== */}
           {activeTab === 'SUPPLIERS' && activeShift && (
             <main className="space-y-4">
@@ -1417,391 +1595,104 @@ export function App() {
                   </div>
                   <div>
                     <h2 className="text-base sm:text-lg font-bold text-slate-900">
-                      Gestión con Proveedores
+                      Gestión con Proveedores y Fincas
                     </h2>
                     <p className="text-xs text-slate-600">
-                      Directorio de fincas, compras de fruta, devoluciones y canastillas en una sola sección
+                      Selecciona un proveedor para comprar o devolver múltiples productos o entregar canastillas
                     </p>
                   </div>
                 </div>
 
-                {/* 4 Tabs de Proveedor (Directorio, Comprar, Devolver, Canastillas) */}
-                <div className="grid grid-cols-4 gap-1 p-1 rounded-xl bg-slate-100 border border-slate-200">
-                  {(
-                    [
-                      { id: 'PROVIDERS_TABLE', label: 'Proveedores' },
-                      { id: 'PURCHASE_FORM', label: 'Comprar' },
-                      { id: 'RETURN_FORM', label: 'Devolver' },
-                      { id: 'CRATES_FORM', label: 'Canastillas' },
-                    ] as const
-                  ).map((t) => (
-                    <button
-                      key={t.id}
-                      type="button"
-                      onClick={() => setSupplierSubTab(t.id)}
-                      className={`min-h-[40px] px-1.5 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer truncate ${
-                        supplierSubTab === t.id
-                          ? 'bg-white text-green-800 shadow-2xs'
-                          : 'text-slate-600 hover:text-slate-900'
-                      }`}
-                    >
-                      {t.label}
-                    </button>
-                  ))}
-                </div>
-
-                {/* TAB 1: TABLA DE 2 COLUMNAS DE PROVEEDORES REGISTRADOS CON PAGINACIÓN */}
-                {supplierSubTab === 'PROVIDERS_TABLE' && (
-                  <div className="space-y-3">
-                    <div className="relative">
-                      <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-                      <input
-                        type="text"
-                        value={supplierSearchQuery}
-                        onChange={(e) => {
-                          setSupplierSearchQuery(e.target.value);
-                          setSuppliersPage(1);
-                        }}
-                        placeholder="Filtrar proveedor por nombre o teléfono..."
-                        className="w-full min-h-[42px] pl-9 pr-3 py-1.5 rounded-xl border border-slate-300 bg-slate-50 text-sm focus:bg-white focus:outline-none focus:ring-2 focus:ring-green-600"
-                      />
-                    </div>
-
-                    <div className="overflow-hidden rounded-xl border border-slate-200">
-                      <table className="w-full text-left border-collapse">
-                        <thead>
-                          <tr className="bg-slate-50 border-b border-slate-200 text-xs font-bold text-slate-600">
-                            <th className="py-2.5 px-3">
-                              Datos del Proveedor
-                            </th>
-                            <th className="py-2.5 px-3 text-right">Acciones</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-200 text-sm">
-                          {filteredSuppliers
-                            .slice(
-                              (suppliersPage - 1) * PAGE_SIZE,
-                              suppliersPage * PAGE_SIZE
-                            )
-                            .map((sup) => (
-                              <tr key={sup.id} className="bg-white">
-                                <td className="py-3 px-3 align-middle">
-                                  <div className="font-bold text-slate-900">
-                                    {sup.name}
-                                  </div>
-                                  <div className="text-xs text-slate-500">
-                                    Tel: {sup.phone}
-                                  </div>
-                                  <span className="inline-block mt-1 px-2 py-0.5 rounded text-[11px] font-bold bg-green-50 text-green-800 border border-green-200 tabular-nums">
-                                    Saldo a favor:{' '}
-                                    {formatCOP(sup.creditBalanceInFavor)}
-                                  </span>
-                                </td>
-                                <td className="py-3 px-3 text-right align-middle">
-                                  <div className="flex flex-col sm:flex-row justify-end gap-1.5">
-                                    <button
-                                      type="button"
-                                      onClick={() => {
-                                        setOpSupplierId(sup.id);
-                                        const prod = state.products[0];
-                                        setOpProductId(prod.id);
-                                        setOpUnitPrice(prod.defaultCostPrice);
-                                        setSupplierSubTab('PURCHASE_FORM');
-                                      }}
-                                      className="px-3 py-1.5 rounded-lg bg-green-700 hover:bg-green-800 text-white text-xs font-bold cursor-pointer"
-                                    >
-                                      Comprar
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onClick={() => {
-                                        setOpSupplierId(sup.id);
-                                        setSupplierSubTab('RETURN_FORM');
-                                      }}
-                                      className="px-3 py-1.5 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 text-xs font-bold cursor-pointer"
-                                    >
-                                      Devolver
-                                    </button>
-                                  </div>
-                                </td>
-                              </tr>
-                            ))}
-                        </tbody>
-                      </table>
-                    </div>
-
-                    <TablePagination
-                      currentPage={suppliersPage}
-                      totalItems={filteredSuppliers.length}
-                      pageSize={PAGE_SIZE}
-                      onPageChange={setSuppliersPage}
+                {/* TABLA DE 2 COLUMNAS DE PROVEEDORES REGISTRADOS CON ACCIONES EN MODAL */}
+                <div className="space-y-3">
+                  <div className="relative">
+                    <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="text"
+                      value={supplierSearchQuery}
+                      onChange={(e) => {
+                        setSupplierSearchQuery(e.target.value);
+                        setSuppliersPage(1);
+                      }}
+                      placeholder="Filtrar proveedor por nombre o teléfono..."
+                      className="w-full min-h-[42px] pl-9 pr-3 py-1.5 rounded-xl border border-slate-300 bg-slate-50 text-sm focus:bg-white focus:outline-none focus:ring-2 focus:ring-green-600"
                     />
                   </div>
-                )}
 
-                {/* TAB 2: COMPRAR FRUTA A PROVEEDOR */}
-                {supplierSubTab === 'PURCHASE_FORM' && (
-                  <form
-                    onSubmit={(e) => {
-                      e.preventDefault();
-                      executeSaveOperation('PURCHASE');
-                    }}
-                    className="space-y-3"
-                  >
-                    <SearchableSelect
-                      label="Proveedor / Finca"
-                      options={supplierPickerOptions}
-                      value={opSupplierId}
-                      onChange={setOpSupplierId}
-                    />
-                    <SearchableSelect
-                      label="Producto comprado"
-                      options={productPickerOptions}
-                      value={opProductId}
-                      onChange={(pid) => {
-                        setOpProductId(pid);
-                        const p = state.products.find((x) => x.id === pid);
-                        if (p) setOpUnitPrice(p.defaultCostPrice);
-                      }}
-                    />
+                  <div className="overflow-hidden rounded-xl border border-slate-200">
+                    <table className="w-full text-left border-collapse">
+                      <thead>
+                        <tr className="bg-slate-50 border-b border-slate-200 text-xs font-bold text-slate-600">
+                          <th className="py-2.5 px-3">
+                            Datos del Proveedor
+                          </th>
+                          <th className="py-2.5 px-3 text-right">Acciones</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-200 text-sm">
+                        {filteredSuppliers
+                          .slice(
+                            (suppliersPage - 1) * PAGE_SIZE,
+                            suppliersPage * PAGE_SIZE
+                          )
+                          .map((sup) => (
+                            <tr key={sup.id} className="bg-white">
+                              <td className="py-3 px-3 align-middle">
+                                <div className="font-bold text-slate-900">
+                                  {sup.name}
+                                </div>
+                                <div className="text-xs text-slate-500">
+                                  Tel: {sup.phone}
+                                </div>
+                                <span className="inline-block mt-1 px-2 py-0.5 rounded text-[11px] font-bold bg-green-50 text-green-800 border border-green-200 tabular-nums">
+                                  Saldo a favor:{' '}
+                                  {formatCOP(sup.creditBalanceInFavor)}
+                                </span>
+                              </td>
+                              <td className="py-3 px-3 text-right align-middle">
+                                <div className="flex flex-col sm:flex-row justify-end gap-1.5">
+                                  {/* 1 Solo botón que abre el modal para Comprar o Devolver múltiples productos */}
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      openSupplierModal(sup.id, 'BUY_RETURN', 'PURCHASE')
+                                    }
+                                    className="px-3 py-1.5 rounded-lg bg-green-700 hover:bg-green-800 text-white text-xs font-bold cursor-pointer"
+                                  >
+                                    Comprar / Devolver
+                                  </button>
+                                  {/* Botón para devolver canastillas al proveedor */}
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      openSupplierModal(sup.id, 'RETURN_CRATES')
+                                    }
+                                    className="px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 text-xs font-bold cursor-pointer"
+                                  >
+                                    Canastillas
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          ))}
+                      </tbody>
+                    </table>
+                  </div>
 
-                    <div className="grid grid-cols-12 gap-2.5 items-end">
-                      <div className="col-span-4">
-                        <label className="block text-xs font-bold text-slate-800 mb-1">
-                          Cantidad
-                        </label>
-                        <input
-                          type="number"
-                          inputMode="numeric"
-                          min={1}
-                          className="w-full min-h-[44px] px-3 py-1.5 rounded-xl border border-slate-300 bg-white text-base font-extrabold tabular-nums"
-                          value={opQuantity}
-                          onChange={(e) =>
-                            setOpQuantity(Number(e.target.value))
-                          }
-                        />
-                      </div>
-                      <div className="col-span-4">
-                        <label className="block text-xs font-bold text-slate-800 mb-1">
-                          Costo unit. ($)
-                        </label>
-                        <input
-                          type="number"
-                          inputMode="decimal"
-                          min={0}
-                          className="w-full min-h-[44px] px-3 py-1.5 rounded-xl border border-slate-300 bg-white text-base font-extrabold tabular-nums"
-                          value={opUnitPrice}
-                          onChange={(e) =>
-                            setOpUnitPrice(Number(e.target.value))
-                          }
-                        />
-                      </div>
-                      <div className="col-span-4 p-2 rounded-xl bg-green-50 border border-green-200 text-right">
-                        <span className="block text-[10px] font-bold uppercase text-green-900">
-                          Total Compra
-                        </span>
-                        <strong className="text-sm sm:text-base font-extrabold text-green-800 tabular-nums">
-                          {formatCOP(opQuantity * opUnitPrice)}
-                        </strong>
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-2">
-                      {(['CASH', 'TRANSFER'] as const).map((pm) => (
-                        <button
-                          key={pm}
-                          type="button"
-                          onClick={() => setOpPaymentMethod(pm)}
-                          className={`min-h-[42px] rounded-xl border text-xs font-bold cursor-pointer ${
-                            opPaymentMethod === pm
-                              ? 'bg-green-700 border-green-700 text-white'
-                              : 'bg-white border-slate-300 text-slate-800'
-                          }`}
-                        >
-                          {pm === 'CASH'
-                            ? 'Pago en Efectivo'
-                            : 'Pago por Transferencia'}
-                        </button>
-                      ))}
-                    </div>
-
-                    <button
-                      type="submit"
-                      disabled={activeShift.status === 'CLOSED'}
-                      className="w-full min-h-[48px] rounded-xl bg-green-700 hover:bg-green-800 text-white font-extrabold text-sm shadow-xs cursor-pointer"
-                    >
-                      Registrar Compra a Proveedor
-                    </button>
-                  </form>
-                )}
-
-                {/* TAB 3: DEVOLVER FRUTA A PROVEEDOR */}
-                {supplierSubTab === 'RETURN_FORM' && (
-                  <form
-                    onSubmit={(e) => {
-                      e.preventDefault();
-                      executeSaveOperation('SUPPLIER_RETURN');
-                    }}
-                    className="space-y-3"
-                  >
-                    <SearchableSelect
-                      label="Proveedor / Finca"
-                      options={supplierPickerOptions}
-                      value={opSupplierId}
-                      onChange={setOpSupplierId}
-                    />
-                    <SearchableSelect
-                      label="Producto a devolver"
-                      options={productPickerOptions}
-                      value={opProductId}
-                      onChange={setOpProductId}
-                    />
-
-                    <div className="grid grid-cols-2 gap-2.5">
-                      <div>
-                        <label className="block text-xs font-bold text-slate-800 mb-1">
-                          Cantidad entregada
-                        </label>
-                        <input
-                          type="number"
-                          inputMode="numeric"
-                          min={1}
-                          className="w-full min-h-[44px] px-3 py-1.5 rounded-xl border border-slate-300 bg-white text-base font-bold tabular-nums"
-                          value={opDeliveredQty}
-                          onChange={(e) =>
-                            setOpDeliveredQty(Number(e.target.value))
-                          }
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-bold text-slate-800 mb-1">
-                          Cantidad aceptada
-                        </label>
-                        <input
-                          type="number"
-                          inputMode="numeric"
-                          min={0}
-                          max={opDeliveredQty}
-                          className="w-full min-h-[44px] px-3 py-1.5 rounded-xl border border-slate-300 bg-white text-base font-bold tabular-nums"
-                          value={opAcceptedQty}
-                          onChange={(e) =>
-                            setOpAcceptedQty(Number(e.target.value))
-                          }
-                        />
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-1.5">
-                      {(
-                        [
-                          { id: 'CREDIT_BALANCE', label: 'Saldo a favor' },
-                          { id: 'PENDING_COMPENSATION', label: 'Pendiente' },
-                          {
-                            id: 'CASH_REFUND_RECEIVED',
-                            label: 'Efectivo recibido',
-                          },
-                          { id: 'PRODUCT_EXCHANGE', label: 'Cambio fruta' },
-                        ] as const
-                      ).map((comp) => (
-                        <button
-                          key={comp.id}
-                          type="button"
-                          onClick={() => setOpCompensationType(comp.id)}
-                          className={`min-h-[40px] px-2.5 py-1.5 rounded-xl border text-xs font-bold cursor-pointer ${
-                            opCompensationType === comp.id
-                              ? 'bg-amber-50 border-amber-600 text-amber-950 ring-1 ring-amber-600'
-                              : 'bg-white border-slate-300 text-slate-800'
-                          }`}
-                        >
-                          {comp.label}
-                        </button>
-                      ))}
-                    </div>
-
-                    <button
-                      type="submit"
-                      disabled={activeShift.status === 'CLOSED'}
-                      className="w-full min-h-[48px] rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-extrabold text-sm shadow-xs cursor-pointer"
-                    >
-                      Registrar Devolución a Proveedor
-                    </button>
-                  </form>
-                )}
-
-                {/* TAB 4: CANASTILLAS CON PROVEEDOR */}
-                {supplierSubTab === 'CRATES_FORM' && (
-                  <form
-                    onSubmit={(e) => {
-                      e.preventDefault();
-                      executeSaveOperation('CRATE_MOVEMENT');
-                    }}
-                    className="space-y-3"
-                  >
-                    <SearchableSelect
-                      label="Proveedor / Finca"
-                      options={supplierPickerOptions}
-                      value={opSupplierId}
-                      onChange={setOpSupplierId}
-                    />
-
-                    <div className="grid grid-cols-2 gap-2">
-                      {(
-                        [
-                          {
-                            id: 'RECEIVED_FROM_SUPPLIER',
-                            label: 'Recibidas de proveedor',
-                          },
-                          {
-                            id: 'RETURNED_TO_SUPPLIER',
-                            label: 'Devueltas a proveedor',
-                          },
-                        ] as const
-                      ).map((mv) => (
-                        <button
-                          key={mv.id}
-                          type="button"
-                          onClick={() => setOpCrateType(mv.id)}
-                          className={`min-h-[44px] px-2.5 py-1.5 rounded-xl border text-xs font-bold cursor-pointer ${
-                            opCrateType === mv.id
-                              ? 'bg-green-50 border-green-600 text-green-950 ring-1 ring-green-600'
-                              : 'bg-white border-slate-300 text-slate-800'
-                          }`}
-                        >
-                          {mv.label}
-                        </button>
-                      ))}
-                    </div>
-
-                    <div>
-                      <label className="block text-xs font-bold text-slate-800 mb-1">
-                        Cantidad de canastillas
-                      </label>
-                      <input
-                        type="number"
-                        inputMode="numeric"
-                        min={1}
-                        className="w-full min-h-[44px] px-3 py-1.5 rounded-xl border border-slate-300 bg-white text-base font-bold tabular-nums"
-                        value={opQuantity}
-                        onChange={(e) => setOpQuantity(Number(e.target.value))}
-                      />
-                    </div>
-
-                    <button
-                      type="submit"
-                      disabled={activeShift.status === 'CLOSED'}
-                      className="w-full min-h-[48px] rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-extrabold text-sm cursor-pointer"
-                    >
-                      Guardar Movimiento de Canastillas
-                    </button>
-                  </form>
-                )}
+                  <TablePagination
+                    currentPage={suppliersPage}
+                    totalItems={filteredSuppliers.length}
+                    pageSize={PAGE_SIZE}
+                    onPageChange={setSuppliersPage}
+                  />
+                </div>
               </section>
             </main>
           )}
 
           {/* ====================================================================
               VISTA 3: COBROS Y DEUDAS (CLIENTES)
-              Una sola sección con 3 Tabs + Tabla de 2 columnas con filtro y paginación
+              Una sola cartera unificada con búsqueda y botones que abren modal directo
              ==================================================================== */}
           {activeTab === 'CLIENTS' && activeShift && reconciliation && (
             <main className="space-y-4">
@@ -1813,7 +1704,7 @@ export function App() {
                     </div>
                     <div>
                       <h2 className="text-base sm:text-lg font-bold text-slate-900">
-                        Cobros y Deudas de Clientes
+                        Cartera de Clientes y Envases
                       </h2>
                       <p className="text-xs text-slate-600">
                         Cartera total:{' '}
@@ -1823,7 +1714,7 @@ export function App() {
                               .totalCombinedPortfolioPending
                           )}
                         </strong>{' '}
-                        · Envases en clientes:{' '}
+                        · Canastillas en clientes:{' '}
                         <strong>
                           {reconciliation.crates.totalCratesHeldByClients}
                         </strong>
@@ -1832,168 +1723,7 @@ export function App() {
                   </div>
                 </div>
 
-                {/* 3 Tabs de Cliente */}
-                <div className="grid grid-cols-3 gap-1 p-1 rounded-xl bg-slate-100 border border-slate-200">
-                  {(
-                    [
-                      { id: 'PORTFOLIO_TABLE', label: 'Cartera Clientes' },
-                      { id: 'COLLECT_DEBT_TAB', label: 'Cobrar Fiado ($)' },
-                      {
-                        id: 'RETURN_CRATES_TAB',
-                        label: 'Devolver Canastillas',
-                      },
-                    ] as const
-                  ).map((t) => (
-                    <button
-                      key={t.id}
-                      type="button"
-                      onClick={() => {
-                        setClientSubTab(t.id);
-                        if (t.id === 'RETURN_CRATES_TAB') {
-                          setOpCrateType('RETURNED_BY_CLIENT');
-                        }
-                      }}
-                      className={`min-h-[40px] px-1.5 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer truncate ${
-                        clientSubTab === t.id
-                          ? 'bg-white text-blue-800 shadow-2xs'
-                          : 'text-slate-600 hover:text-slate-900'
-                      }`}
-                    >
-                      {t.label}
-                    </button>
-                  ))}
-                </div>
-
-                {/* FORMULARIO INTEGRADO SI ESTÁ EN EL TAB DE COBRAR FIADO ($) */}
-                {clientSubTab === 'COLLECT_DEBT_TAB' && (
-                  <form
-                    onSubmit={(e) => {
-                      e.preventDefault();
-                      executeSaveOperation('COLLECTION_PAST_DEBT');
-                    }}
-                    className="p-3.5 rounded-xl bg-blue-50/50 border border-blue-200 space-y-3"
-                  >
-                    <SearchableSelect
-                      label="Cliente que realiza el pago"
-                      options={clientPickerOptions}
-                      value={opClientId}
-                      onChange={setOpClientId}
-                    />
-
-                    <div className="grid grid-cols-2 gap-2">
-                      {(
-                        [
-                          { id: 'PAST', label: 'Deuda días anteriores' },
-                          { id: 'CURRENT', label: 'Abono fiado de hoy' },
-                        ] as const
-                      ).map((k) => (
-                        <button
-                          key={k.id}
-                          type="button"
-                          onClick={() => setOpCollectionKind(k.id)}
-                          className={`min-h-[40px] rounded-xl border text-xs font-bold cursor-pointer ${
-                            opCollectionKind === k.id
-                              ? 'bg-blue-600 border-blue-600 text-white'
-                              : 'bg-white border-slate-300 text-slate-800'
-                          }`}
-                        >
-                          {k.label}
-                        </button>
-                      ))}
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-2.5">
-                      <div>
-                        <label className="block text-xs font-bold text-slate-800 mb-1">
-                          Abono a capital ($)
-                        </label>
-                        <input
-                          type="number"
-                          inputMode="decimal"
-                          min={0}
-                          className="w-full min-h-[42px] px-3 py-1.5 rounded-xl border border-slate-300 bg-white text-base font-bold tabular-nums"
-                          value={opCollectionAmount}
-                          onChange={(e) =>
-                            setOpCollectionAmount(Number(e.target.value))
-                          }
-                        />
-                      </div>
-                      {opCollectionKind === 'PAST' && (
-                        <div>
-                          <label className="block text-xs font-bold text-slate-800 mb-1">
-                            Interés pactado ($)
-                          </label>
-                          <input
-                            type="number"
-                            inputMode="decimal"
-                            min={0}
-                            className="w-full min-h-[42px] px-3 py-1.5 rounded-xl border border-slate-300 bg-white text-base font-bold tabular-nums"
-                            value={opCollectionInterest}
-                            onChange={(e) =>
-                              setOpCollectionInterest(Number(e.target.value))
-                            }
-                          />
-                        </div>
-                      )}
-                    </div>
-
-                    <button
-                      type="submit"
-                      disabled={activeShift.status === 'CLOSED'}
-                      className="w-full min-h-[46px] rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-extrabold text-sm cursor-pointer"
-                    >
-                      Guardar Cobro de Cliente
-                    </button>
-                  </form>
-                )}
-
-                {/* FORMULARIO INTEGRADO SI ESTÁ EN EL TAB DE DEVOLVER CANASTILLAS */}
-                {clientSubTab === 'RETURN_CRATES_TAB' && (
-                  <form
-                    onSubmit={(e) => {
-                      e.preventDefault();
-                      setOpCrateType('RETURNED_BY_CLIENT');
-                      executeSaveOperation('CRATE_MOVEMENT');
-                    }}
-                    className="p-3.5 rounded-xl bg-slate-100 border border-slate-200 space-y-3"
-                  >
-                    <SearchableSelect
-                      label="Cliente que devuelve las canastillas"
-                      options={clientPickerOptions}
-                      value={opClientId}
-                      onChange={setOpClientId}
-                    />
-
-                    <div className="grid grid-cols-12 gap-2.5 items-end">
-                      <div className="col-span-5">
-                        <label className="block text-xs font-bold text-slate-800 mb-1">
-                          Canastillas devueltas
-                        </label>
-                        <input
-                          type="number"
-                          inputMode="numeric"
-                          min={1}
-                          className="w-full min-h-[44px] px-3 py-1.5 rounded-xl border border-slate-300 bg-white text-base font-bold tabular-nums"
-                          value={opQuantity}
-                          onChange={(e) =>
-                            setOpQuantity(Number(e.target.value))
-                          }
-                        />
-                      </div>
-                      <div className="col-span-7">
-                        <button
-                          type="submit"
-                          disabled={activeShift.status === 'CLOSED'}
-                          className="w-full min-h-[44px] rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-extrabold text-xs sm:text-sm cursor-pointer"
-                        >
-                          Descontar Canastillas al Cliente
-                        </button>
-                      </div>
-                    </div>
-                  </form>
-                )}
-
-                {/* BUSCADOR Y FILTRO + TABLA DE 2 COLUMNAS CON PAGINACIÓN (Común para los 3 tabs de clientes) */}
+                {/* BUSCADOR Y FILTROS */}
                 <div className="space-y-3">
                   <div className="flex flex-col sm:flex-row gap-2">
                     <div className="relative flex-1">
@@ -2037,6 +1767,7 @@ export function App() {
                     </div>
                   </div>
 
+                  {/* TABLA DE 2 COLUMNAS: CLIENTES Y ACCIONES CON MODAL DIRECTO */}
                   <div className="overflow-hidden rounded-xl border border-slate-200">
                     <table className="w-full text-left border-collapse">
                       <thead>
@@ -2085,34 +1816,22 @@ export function App() {
                               </td>
                               <td className="py-2.5 px-3 text-right align-middle">
                                 <div className="flex flex-col sm:flex-row justify-end gap-1.5">
+                                  {/* Botón que abre el modal centrado para cobrar deuda en $ */}
                                   <button
                                     type="button"
-                                    onClick={() => {
-                                      setOpClientId(item.client.id);
-                                      setOpCollectionAmount(
-                                        item.remainingPastPrincipal ||
-                                          item.currentShiftCreditPending ||
-                                          50000
-                                      );
-                                      setOpCollectionInterest(
-                                        item.remainingPastInterest
-                                      );
-                                      setClientSubTab('COLLECT_DEBT_TAB');
-                                    }}
+                                    onClick={() =>
+                                      openClientModal(item.client.id, 'COLLECT_DEBT')
+                                    }
                                     className="px-2.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold cursor-pointer"
                                   >
                                     Cobrar $
                                   </button>
+                                  {/* Botón que abre el modal centrado para recibir envases devueltos */}
                                   <button
                                     type="button"
-                                    onClick={() => {
-                                      setOpClientId(item.client.id);
-                                      setOpQuantity(
-                                        Math.max(1, item.totalCratesOwed)
-                                      );
-                                      setOpCrateType('RETURNED_BY_CLIENT');
-                                      setClientSubTab('RETURN_CRATES_TAB');
-                                    }}
+                                    onClick={() =>
+                                      openClientModal(item.client.id, 'RETURN_CRATES')
+                                    }
                                     className="px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 text-xs font-bold cursor-pointer"
                                   >
                                     Recibir Envase
@@ -2568,52 +2287,674 @@ export function App() {
       )}
 
       {/* ====================================================================
+          MODALES ADICIONALES:
+          1. MODAL COMPRA / DEVOLUCIÓN DE PROVEEDOR (Múltiples productos + Canastillas)
+          2. MODAL ENTREGA DE CANASTILLAS A PROVEEDOR
+          3. MODAL COBRO DE DEUDA DE CLIENTE ($)
+          4. MODAL RECEPCIÓN DE CANASTILLAS DE CLIENTE
+         ==================================================================== */}
+
+      {/* 1. Modal Proveedor: Comprar Fruta o Devolver Fruta (Permite múltiples productos y devolución simultánea de canastillas) */}
+      {supplierModalMode === 'BUY_RETURN' && activeShift && (
+        <BottomSheet
+          isOpen={true}
+          size="large"
+          onClose={() => setSupplierModalMode(null)}
+          title={
+            supplierActionType === 'PURCHASE'
+              ? 'Comprar Fruta a Proveedor'
+              : 'Devolver Fruta a Proveedor'
+          }
+          subtitle={`Proveedor: ${
+            state.suppliers.find((s) => s.id === opSupplierId)?.name ?? 'Finca'
+          }`}
+          icon={<Truck className="w-5 h-5 text-green-700" />}
+        >
+          <div className="space-y-3.5">
+            {/* Alternar si es compra o devolución dentro del mismo modal */}
+            <div className="grid grid-cols-2 gap-1.5 p-1 rounded-xl bg-slate-100 border border-slate-200">
+              <button
+                type="button"
+                onClick={() => setSupplierActionType('PURCHASE')}
+                className={`py-2 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
+                  supplierActionType === 'PURCHASE'
+                    ? 'bg-green-700 text-white shadow-2xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                Comprar Carga
+              </button>
+              <button
+                type="button"
+                onClick={() => setSupplierActionType('RETURN')}
+                className={`py-2 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
+                  supplierActionType === 'RETURN'
+                    ? 'bg-amber-600 text-white shadow-2xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                Devolver Fruta
+              </button>
+            </div>
+
+            {/* Listado dinámico de productos para comprar o devolver */}
+            <div className="space-y-2.5">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold uppercase text-slate-700">
+                  Productos ({supplierLines.length})
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const firstProd = state.products[0];
+                    setSupplierLines((prev) => [
+                      ...prev,
+                      {
+                        productId: firstProd?.id || 'PROD-BANANO-PRIMERA',
+                        deliveredQty: 2,
+                        acceptedQty: 2,
+                        unitPrice: firstProd?.defaultCostPrice || 28000,
+                        compensationType: 'CREDIT_BALANCE',
+                      },
+                    ]);
+                  }}
+                  className="px-2.5 py-1 rounded-lg bg-green-50 hover:bg-green-100 text-green-800 border border-green-200 text-xs font-bold cursor-pointer"
+                >
+                  + Agregar otro producto
+                </button>
+              </div>
+
+              {supplierLines.map((line, idx) => {
+                return (
+                  <div
+                    key={idx}
+                    className="p-3 rounded-xl border border-slate-200 bg-slate-50/60 space-y-2.5"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex-1">
+                        <select
+                          value={line.productId}
+                          onChange={(e) => {
+                            const newPid = e.target.value;
+                            const pObj = state.products.find(
+                              (x) => x.id === newPid
+                            );
+                            setSupplierLines((prev) =>
+                              prev.map((item, i) =>
+                                i === idx
+                                  ? {
+                                      ...item,
+                                      productId: newPid,
+                                      unitPrice:
+                                        pObj?.defaultCostPrice || 28000,
+                                    }
+                                  : item
+                              )
+                            );
+                          }}
+                          className="w-full min-h-[38px] px-2.5 py-1 rounded-lg border border-slate-300 bg-white text-xs sm:text-sm font-semibold"
+                        >
+                          {state.products.map((p) => (
+                            <option key={p.id} value={p.id}>
+                              {p.name} ({p.unit}) - Costo: {formatCOP(p.defaultCostPrice)}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      {supplierLines.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setSupplierLines((prev) =>
+                              prev.filter((_, i) => i !== idx)
+                            )
+                          }
+                          className="w-8 h-8 rounded-lg bg-red-50 text-red-700 hover:bg-red-100 flex items-center justify-center shrink-0 cursor-pointer"
+                        >
+                          ✕
+                        </button>
+                      )}
+                    </div>
+
+                    <div className="grid grid-cols-12 gap-2 items-end">
+                      <div className="col-span-4">
+                        <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                          {supplierActionType === 'PURCHASE'
+                            ? 'Cantidad'
+                            : 'Entregada'}
+                        </label>
+                        <input
+                          type="number"
+                          inputMode="numeric"
+                          min={1}
+                          className="w-full min-h-[38px] px-2 py-1 rounded-lg border border-slate-300 bg-white text-sm font-extrabold text-center tabular-nums"
+                          value={line.deliveredQty}
+                          onChange={(e) => {
+                            const val = Number(e.target.value);
+                            setSupplierLines((prev) =>
+                              prev.map((item, i) =>
+                                i === idx
+                                  ? {
+                                      ...item,
+                                      deliveredQty: val,
+                                      acceptedQty:
+                                        supplierActionType === 'PURCHASE'
+                                          ? val
+                                          : Math.min(item.acceptedQty, val),
+                                    }
+                                  : item
+                              )
+                            );
+                          }}
+                        />
+                      </div>
+
+                      {supplierActionType === 'RETURN' && (
+                        <div className="col-span-4">
+                          <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                            Aceptada
+                          </label>
+                          <input
+                            type="number"
+                            inputMode="numeric"
+                            min={0}
+                            max={line.deliveredQty}
+                            className="w-full min-h-[38px] px-2 py-1 rounded-lg border border-slate-300 bg-white text-sm font-extrabold text-center tabular-nums"
+                            value={line.acceptedQty}
+                            onChange={(e) => {
+                              const val = Number(e.target.value);
+                              setSupplierLines((prev) =>
+                                prev.map((item, i) =>
+                                  i === idx ? { ...item, acceptedQty: val } : item
+                                )
+                              );
+                            }}
+                          />
+                        </div>
+                      )}
+
+                      <div
+                        className={
+                          supplierActionType === 'PURCHASE'
+                            ? 'col-span-4'
+                            : 'col-span-4'
+                        }
+                      >
+                        <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                          Costo Unit. ($)
+                        </label>
+                        <input
+                          type="number"
+                          inputMode="decimal"
+                          min={0}
+                          className="w-full min-h-[38px] px-2 py-1 rounded-lg border border-slate-300 bg-white text-xs sm:text-sm font-extrabold text-center tabular-nums"
+                          value={line.unitPrice}
+                          onChange={(e) => {
+                            const val = Number(e.target.value);
+                            setSupplierLines((prev) =>
+                              prev.map((item, i) =>
+                                i === idx ? { ...item, unitPrice: val } : item
+                              )
+                            );
+                          }}
+                        />
+                      </div>
+
+                      <div
+                        className={
+                          supplierActionType === 'PURCHASE'
+                            ? 'col-span-4 p-1.5 rounded-lg bg-green-50 border border-green-200 text-right'
+                            : 'col-span-12 p-1.5 rounded-lg bg-amber-50 border border-amber-200 flex justify-between items-center'
+                        }
+                      >
+                        <span className="text-[10px] font-bold uppercase text-slate-700">
+                          Subtotal:
+                        </span>
+                        <strong className="text-xs sm:text-sm font-extrabold text-slate-900 tabular-nums">
+                          {formatCOP(
+                            (supplierActionType === 'PURCHASE'
+                              ? line.deliveredQty
+                              : line.acceptedQty) * line.unitPrice
+                          )}
+                        </strong>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Opción para devolver canastillas al proveedor de una vez al momento de la entrega */}
+            <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 space-y-2">
+              <label className="flex items-center justify-between text-xs font-bold text-slate-800">
+                <span>Devolver canastillas al proveedor de una vez:</span>
+                <input
+                  type="number"
+                  inputMode="numeric"
+                  min={0}
+                  className="w-20 min-h-[34px] px-2 py-1 rounded-lg border border-slate-300 bg-white text-xs font-bold text-center tabular-nums"
+                  value={supplierReturnCratesQty}
+                  onChange={(e) =>
+                    setSupplierReturnCratesQty(Number(e.target.value))
+                  }
+                />
+              </label>
+            </div>
+
+            {/* Medio de pago o compensación */}
+            {supplierActionType === 'PURCHASE' ? (
+              <div className="grid grid-cols-2 gap-2">
+                {(['CASH', 'TRANSFER'] as const).map((pm) => (
+                  <button
+                    key={pm}
+                    type="button"
+                    onClick={() => setOpPaymentMethod(pm)}
+                    className={`min-h-[40px] rounded-xl border text-xs font-bold cursor-pointer ${
+                      opPaymentMethod === pm
+                        ? 'bg-green-700 border-green-700 text-white'
+                        : 'bg-white border-slate-300 text-slate-800'
+                    }`}
+                  >
+                    {pm === 'CASH' ? 'Efectivo en Caja' : 'Transferencia Bancaria'}
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 gap-1.5">
+                {(
+                  [
+                    { id: 'CREDIT_BALANCE', label: 'Saldo a favor' },
+                    { id: 'CASH_REFUND_RECEIVED', label: 'Efectivo recibido' },
+                    { id: 'PENDING_COMPENSATION', label: 'Pendiente' },
+                    { id: 'PRODUCT_EXCHANGE', label: 'Cambio fruta' },
+                  ] as const
+                ).map((comp) => (
+                  <button
+                    key={comp.id}
+                    type="button"
+                    onClick={() => setOpCompensationType(comp.id)}
+                    className={`min-h-[38px] px-2 py-1 rounded-lg border text-xs font-bold cursor-pointer ${
+                      opCompensationType === comp.id
+                        ? 'bg-amber-600 text-white border-amber-600'
+                        : 'bg-white border-slate-300 text-slate-800'
+                    }`}
+                  >
+                    {comp.label}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {/* Total general y botón de confirmación */}
+            <div className="p-3 rounded-xl bg-slate-900 text-white flex justify-between items-center">
+              <span className="text-xs font-medium">Total de la Operación:</span>
+              <strong className="text-base sm:text-lg font-extrabold text-green-400 tabular-nums">
+                {formatCOP(
+                  supplierLines.reduce(
+                    (sum, line) =>
+                      sum +
+                      (supplierActionType === 'PURCHASE'
+                        ? line.deliveredQty
+                        : line.acceptedQty) *
+                        line.unitPrice,
+                    0
+                  )
+                )}
+              </strong>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2 pt-1 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setSupplierModalMode(null)}
+                className="min-h-[44px] rounded-xl border border-slate-300 bg-white text-slate-700 font-bold text-xs sm:text-sm cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                disabled={activeShift.status === 'CLOSED'}
+                onClick={async () => {
+                  const sup = state.suppliers.find((s) => s.id === opSupplierId);
+                  let successCount = 0;
+
+                  for (const line of supplierLines) {
+                    const pr = state.products.find((p) => p.id === line.productId);
+                    if (supplierActionType === 'PURCHASE') {
+                      const res = await coreService.createOperation({
+                        actorUserId: currentUser.id,
+                        shiftId: activeShift.id,
+                        type: 'PURCHASE',
+                        payload: {
+                          productId: pr?.id,
+                          productName: pr?.name,
+                          supplierId: sup?.id,
+                          supplierName: sup?.name,
+                          quantity: line.deliveredQty,
+                          unitCost: line.unitPrice,
+                          totalAmount: line.deliveredQty * line.unitPrice,
+                          paymentMethod: opPaymentMethod,
+                          notes: `Compra de fruta a ${sup?.name ?? 'proveedor'}`,
+                        },
+                      });
+                      if (res.ok) successCount++;
+                    } else {
+                      const res = await coreService.createOperation({
+                        actorUserId: currentUser.id,
+                        shiftId: activeShift.id,
+                        type: 'SUPPLIER_RETURN',
+                        payload: {
+                          productId: pr?.id,
+                          productName: pr?.name,
+                          supplierId: sup?.id,
+                          supplierName: sup?.name,
+                          quantity: line.deliveredQty,
+                          deliveredQuantity: line.deliveredQty,
+                          acceptedQuantity: line.acceptedQty,
+                          unitCost: line.unitPrice,
+                          totalAmount: line.acceptedQty * line.unitPrice,
+                          compensationType: opCompensationType,
+                          cashRefundReceivedAmount:
+                            opCompensationType === 'CASH_REFUND_RECEIVED'
+                              ? line.acceptedQty * line.unitPrice
+                              : 0,
+                          notes: `Devolución de fruta a ${sup?.name ?? 'proveedor'}`,
+                        },
+                      });
+                      if (res.ok) successCount++;
+                    }
+                  }
+
+                  // Si también devolvió canastillas al proveedor
+                  if (supplierReturnCratesQty > 0 && sup) {
+                    await coreService.createOperation({
+                      actorUserId: currentUser.id,
+                      shiftId: activeShift.id,
+                      type: 'CRATE_MOVEMENT',
+                      payload: {
+                        supplierId: sup.id,
+                        supplierName: sup.name,
+                        crateMovementType: 'RETURNED_TO_SUPPLIER',
+                        crateQuantity: supplierReturnCratesQty,
+                        quantity: supplierReturnCratesQty,
+                        totalAmount: 0,
+                        notes: `Devolución de ${supplierReturnCratesQty} canastillas al proveedor`,
+                      },
+                    });
+                  }
+
+                  setSupplierModalMode(null);
+                  setFeedback({
+                    type: 'success',
+                    text: `Se registraron exitosamente ${successCount} productos con el proveedor ${sup?.name ?? ''}.`,
+                  });
+                  refreshState();
+                }}
+                className="min-h-[44px] rounded-xl bg-green-700 hover:bg-green-800 text-white font-extrabold text-xs sm:text-sm cursor-pointer"
+              >
+                Confirmar Registro
+              </button>
+            </div>
+          </div>
+        </BottomSheet>
+      )}
+
+      {/* 2. Modal Proveedor: Entrega de Canastillas únicamente */}
+      {supplierModalMode === 'RETURN_CRATES' && activeShift && (
+        <BottomSheet
+          isOpen={true}
+          size="default"
+          onClose={() => setSupplierModalMode(null)}
+          title="Canastillas con Proveedor"
+          subtitle={`Proveedor: ${
+            state.suppliers.find((s) => s.id === opSupplierId)?.name ?? 'Finca'
+          }`}
+          icon={<Boxes className="w-5 h-5 text-green-700" />}
+        >
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              executeSaveOperation('CRATE_MOVEMENT');
+            }}
+            className="space-y-3.5"
+          >
+            <div className="grid grid-cols-2 gap-2">
+              {(
+                [
+                  {
+                    id: 'RETURNED_TO_SUPPLIER',
+                    label: 'Devueltas a proveedor',
+                  },
+                  {
+                    id: 'RECEIVED_FROM_SUPPLIER',
+                    label: 'Recibidas de proveedor',
+                  },
+                ] as const
+              ).map((mv) => (
+                <button
+                  key={mv.id}
+                  type="button"
+                  onClick={() => setOpCrateType(mv.id)}
+                  className={`min-h-[42px] px-2 py-1.5 rounded-xl border text-xs font-bold cursor-pointer ${
+                    opCrateType === mv.id
+                      ? 'bg-green-700 text-white border-green-700'
+                      : 'bg-white border-slate-300 text-slate-800'
+                  }`}
+                >
+                  {mv.label}
+                </button>
+              ))}
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-800 mb-1">
+                Cantidad de canastillas
+              </label>
+              <input
+                type="number"
+                inputMode="numeric"
+                min={1}
+                className="w-full min-h-[44px] px-3 py-1.5 rounded-xl border border-slate-300 bg-white text-base font-extrabold text-center tabular-nums"
+                value={opQuantity}
+                onChange={(e) => setOpQuantity(Number(e.target.value))}
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setSupplierModalMode(null)}
+                className="min-h-[44px] rounded-xl border border-slate-300 bg-white text-slate-700 font-bold text-xs sm:text-sm cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="submit"
+                disabled={activeShift.status === 'CLOSED'}
+                className="min-h-[44px] rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-extrabold text-xs sm:text-sm cursor-pointer"
+              >
+                Guardar Envases
+              </button>
+            </div>
+          </form>
+        </BottomSheet>
+      )}
+
+      {/* 3. Modal Cliente: Cobrar Fiado ($) */}
+      {clientModalMode === 'COLLECT_DEBT' && activeShift && (
+        <BottomSheet
+          isOpen={true}
+          size="default"
+          onClose={() => setClientModalMode(null)}
+          title="Cobrar Deuda de Cliente"
+          subtitle={`Cliente: ${
+            state.clients.find((c) => c.id === opClientId)?.name ?? ''
+          }`}
+          icon={<DollarSign className="w-5 h-5 text-blue-700" />}
+        >
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              executeSaveOperation('COLLECTION_PAST_DEBT');
+            }}
+            className="space-y-3.5"
+          >
+            <div className="grid grid-cols-2 gap-2">
+              {(
+                [
+                  { id: 'PAST', label: 'Deuda días anteriores' },
+                  { id: 'CURRENT', label: 'Abono fiado de hoy' },
+                ] as const
+              ).map((k) => (
+                <button
+                  key={k.id}
+                  type="button"
+                  onClick={() => setOpCollectionKind(k.id)}
+                  className={`min-h-[40px] rounded-xl border text-xs font-bold cursor-pointer ${
+                    opCollectionKind === k.id
+                      ? 'bg-blue-600 border-blue-600 text-white'
+                      : 'bg-white border-slate-300 text-slate-800'
+                  }`}
+                >
+                  {k.label}
+                </button>
+              ))}
+            </div>
+
+            <div className="grid grid-cols-2 gap-2.5">
+              <div>
+                <label className="block text-xs font-bold text-slate-800 mb-1">
+                  Abono capital ($)
+                </label>
+                <input
+                  type="number"
+                  inputMode="decimal"
+                  min={0}
+                  className="w-full min-h-[44px] px-3 py-1.5 rounded-xl border border-slate-300 bg-white text-base font-bold tabular-nums"
+                  value={opCollectionAmount}
+                  onChange={(e) => setOpCollectionAmount(Number(e.target.value))}
+                />
+              </div>
+              {opCollectionKind === 'PAST' && (
+                <div>
+                  <label className="block text-xs font-bold text-slate-800 mb-1">
+                    Interés pactado ($)
+                  </label>
+                  <input
+                    type="number"
+                    inputMode="decimal"
+                    min={0}
+                    className="w-full min-h-[44px] px-3 py-1.5 rounded-xl border border-slate-300 bg-white text-base font-bold tabular-nums"
+                    value={opCollectionInterest}
+                    onChange={(e) =>
+                      setOpCollectionInterest(Number(e.target.value))
+                    }
+                  />
+                </div>
+              )}
+            </div>
+
+            <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setClientModalMode(null)}
+                className="min-h-[44px] rounded-xl border border-slate-300 bg-white text-slate-700 font-bold text-xs sm:text-sm cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="submit"
+                disabled={activeShift.status === 'CLOSED'}
+                className="min-h-[44px] rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-extrabold text-xs sm:text-sm cursor-pointer"
+              >
+                Guardar Cobro
+              </button>
+            </div>
+          </form>
+        </BottomSheet>
+      )}
+
+      {/* 4. Modal Cliente: Recibir Canastillas Devueltas */}
+      {clientModalMode === 'RETURN_CRATES' && activeShift && (
+        <BottomSheet
+          isOpen={true}
+          size="default"
+          onClose={() => setClientModalMode(null)}
+          title="Recibir Canastillas de Cliente"
+          subtitle={`Cliente: ${
+            state.clients.find((c) => c.id === opClientId)?.name ?? ''
+          }`}
+          icon={<Boxes className="w-5 h-5 text-slate-800" />}
+        >
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              setOpCrateType('RETURNED_BY_CLIENT');
+              executeSaveOperation('CRATE_MOVEMENT');
+            }}
+            className="space-y-3.5"
+          >
+            <div>
+              <label className="block text-xs font-bold text-slate-800 mb-1">
+                Canastillas devueltas por el cliente
+              </label>
+              <input
+                type="number"
+                inputMode="numeric"
+                min={1}
+                className="w-full min-h-[44px] px-3 py-1.5 rounded-xl border border-slate-300 bg-white text-base font-extrabold text-center tabular-nums"
+                value={opQuantity}
+                onChange={(e) => setOpQuantity(Number(e.target.value))}
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setClientModalMode(null)}
+                className="min-h-[44px] rounded-xl border border-slate-300 bg-white text-slate-700 font-bold text-xs sm:text-sm cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="submit"
+                disabled={activeShift.status === 'CLOSED'}
+                className="min-h-[44px] rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-extrabold text-xs sm:text-sm cursor-pointer"
+              >
+                Descontar Deuda
+              </button>
+            </div>
+          </form>
+        </BottomSheet>
+      )}
+
+      {/* ====================================================================
           MODAL CENTRADO 1 (BOTÓN CIRCULAR +): REGISTRAR VENTA O REGISTRAR GASTO
          ==================================================================== */}
       <BottomSheet
         isOpen={Boolean(fabModalType)}
+        size={fabModalType === 'SALE' ? 'large' : 'default'}
         onClose={() => setFabModalType(null)}
         title={
           fabModalType === 'SALE'
             ? 'Registrar Venta en Ruta'
             : 'Registrar Gasto Operativo'
         }
-        subtitle="Se guarda inmediatamente en la memoria del dispositivo"
+        subtitle={
+          fabModalType === 'SALE'
+            ? 'Venta de múltiples productos, cobro en efectivo/fiado y devolución de envases en la misma visita'
+            : 'Se guarda inmediatamente en la memoria del dispositivo'
+        }
         icon={
           fabModalType === 'SALE' ? (
             <ShoppingCart className="w-5 h-5" />
           ) : (
-            <Receipt className="w-5 h-5" />
+            <Receipt className="w-5 h-5 text-amber-700" />
           )
         }
       >
         {fabModalType === 'SALE' && (
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              executeSaveOperation('SALE');
-            }}
-            className="space-y-3"
-          >
-            <SearchableSelect
-              label="Producto"
-              options={productPickerOptions}
-              value={opProductId}
-              searchPlaceholder="Buscar producto..."
-              onChange={(prodId) => {
-                setOpProductId(prodId);
-                const prod = state.products.find((p) => p.id === prodId);
-                if (prod) {
-                  setOpUnitPrice(prod.defaultSalePrice);
-                  const usesCrates = prod.unit
-                    .toLowerCase()
-                    .includes('canastilla');
-                  setOpAutoLeaveCrates(usesCrates);
-                  setOpAutoCratesCount(opQuantity);
-                }
-              }}
-            />
-
+          <div className="space-y-3.5">
             <SearchableSelect
               label="Cliente"
               options={clientPickerOptions}
@@ -2622,69 +2963,203 @@ export function App() {
               onChange={setOpClientId}
             />
 
-            <div className="grid grid-cols-12 gap-2 items-end">
-              <div className="col-span-4">
-                <label className="block text-xs font-bold text-slate-800 mb-1">
-                  Cantidad
-                </label>
-                <input
-                  type="number"
-                  inputMode="numeric"
-                  min={1}
-                  className="w-full min-h-[44px] px-3 py-1.5 rounded-xl border border-slate-300 bg-white text-base font-extrabold tabular-nums"
-                  value={opQuantity}
-                  onChange={(e) => {
-                    const q = Number(e.target.value);
-                    setOpQuantity(q);
-                    setOpAutoCratesCount(q);
-                  }}
-                />
-              </div>
-              <div className="col-span-4">
-                <label className="block text-xs font-bold text-slate-800 mb-1">
-                  Unitario ($)
-                </label>
-                <input
-                  type="number"
-                  inputMode="decimal"
-                  min={0}
-                  className="w-full min-h-[44px] px-3 py-1.5 rounded-xl border border-slate-300 bg-white text-base font-extrabold tabular-nums"
-                  value={opUnitPrice}
-                  onChange={(e) => setOpUnitPrice(Number(e.target.value))}
-                />
-              </div>
-              <div className="col-span-4 p-2 rounded-xl bg-green-50 border border-green-200 text-right">
-                <span className="block text-[10px] font-bold uppercase text-green-900">
-                  Total
+            {/* Lista dinámica de múltiples productos en la misma venta */}
+            <div className="space-y-2.5">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold uppercase text-slate-700">
+                  Productos a entregar ({saleLines.length})
                 </span>
-                <strong className="text-sm sm:text-base font-extrabold text-green-800 tabular-nums">
-                  {formatCOP(opQuantity * opUnitPrice)}
-                </strong>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const firstP = state.products[0];
+                    const usesCr = firstP?.unit
+                      .toLowerCase()
+                      .includes('canastilla') ?? false;
+                    setSaleLines((prev) => [
+                      ...prev,
+                      {
+                        productId: firstP?.id || 'PROD-BANANO-PRIMERA',
+                        quantity: 3,
+                        unitPrice: firstP?.defaultSalePrice || 38000,
+                        autoLeaveCrates: usesCr,
+                        cratesCount: usesCr ? 3 : 0,
+                      },
+                    ]);
+                  }}
+                  className="px-2.5 py-1 rounded-lg bg-green-50 hover:bg-green-100 text-green-800 border border-green-200 text-xs font-bold cursor-pointer"
+                >
+                  + Agregar otro producto
+                </button>
               </div>
+
+              {saleLines.map((line, idx) => {
+                const prod = state.products.find((p) => p.id === line.productId);
+                return (
+                  <div
+                    key={idx}
+                    className="p-3 rounded-xl border border-slate-200 bg-slate-50/70 space-y-2"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex-1">
+                        <select
+                          value={line.productId}
+                          onChange={(e) => {
+                            const newPid = e.target.value;
+                            const pObj = state.products.find(
+                              (x) => x.id === newPid
+                            );
+                            const usesCr = pObj?.unit
+                              .toLowerCase()
+                              .includes('canastilla') ?? false;
+                            setSaleLines((prev) =>
+                              prev.map((item, i) =>
+                                i === idx
+                                  ? {
+                                      ...item,
+                                      productId: newPid,
+                                      unitPrice:
+                                        pObj?.defaultSalePrice || 38000,
+                                      autoLeaveCrates: usesCr,
+                                      cratesCount: usesCr ? item.quantity : 0,
+                                    }
+                                  : item
+                              )
+                            );
+                          }}
+                          className="w-full min-h-[38px] px-2.5 py-1 rounded-lg border border-slate-300 bg-white text-xs sm:text-sm font-semibold"
+                        >
+                          {state.products.map((p) => (
+                            <option key={p.id} value={p.id}>
+                              {p.name} ({p.unit}) - {formatCOP(p.defaultSalePrice)}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      {saleLines.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setSaleLines((prev) =>
+                              prev.filter((_, i) => i !== idx)
+                            )
+                          }
+                          className="w-8 h-8 rounded-lg bg-red-50 text-red-700 hover:bg-red-100 flex items-center justify-center shrink-0 cursor-pointer"
+                        >
+                          ✕
+                        </button>
+                      )}
+                    </div>
+
+                    <div className="grid grid-cols-12 gap-2 items-end">
+                      <div className="col-span-4">
+                        <label className="block text-[11px] font-bold text-slate-700 mb-0.5">
+                          Cantidad ({prod?.unit ?? 'und'})
+                        </label>
+                        <input
+                          type="number"
+                          inputMode="numeric"
+                          min={1}
+                          className="w-full min-h-[38px] px-2 py-1 rounded-lg border border-slate-300 bg-white text-sm font-extrabold text-center tabular-nums"
+                          value={line.quantity}
+                          onChange={(e) => {
+                            const val = Number(e.target.value);
+                            setSaleLines((prev) =>
+                              prev.map((item, i) =>
+                                i === idx
+                                  ? {
+                                      ...item,
+                                      quantity: val,
+                                      cratesCount: item.autoLeaveCrates
+                                        ? val
+                                        : item.cratesCount,
+                                    }
+                                  : item
+                              )
+                            );
+                          }}
+                        />
+                      </div>
+
+                      <div className="col-span-4">
+                        <label className="block text-[11px] font-bold text-slate-700 mb-0.5">
+                          Precio ($)
+                        </label>
+                        <input
+                          type="number"
+                          inputMode="decimal"
+                          min={0}
+                          className="w-full min-h-[38px] px-2 py-1 rounded-lg border border-slate-300 bg-white text-xs sm:text-sm font-extrabold text-center tabular-nums"
+                          value={line.unitPrice}
+                          onChange={(e) => {
+                            const val = Number(e.target.value);
+                            setSaleLines((prev) =>
+                              prev.map((item, i) =>
+                                i === idx ? { ...item, unitPrice: val } : item
+                              )
+                            );
+                          }}
+                        />
+                      </div>
+
+                      <div className="col-span-4 p-1.5 rounded-lg bg-green-50 border border-green-200 text-right">
+                        <span className="block text-[10px] font-bold uppercase text-green-900">
+                          Subtotal
+                        </span>
+                        <strong className="text-xs sm:text-sm font-extrabold text-green-800 tabular-nums">
+                          {formatCOP(line.quantity * line.unitPrice)}
+                        </strong>
+                      </div>
+                    </div>
+
+                    {/* Deuda automática de canastillas por línea de producto */}
+                    <label className="flex items-center gap-2 text-xs font-semibold text-slate-700 cursor-pointer pt-1">
+                      <input
+                        type="checkbox"
+                        className="w-3.5 h-3.5 accent-blue-700 rounded"
+                        checked={line.autoLeaveCrates}
+                        onChange={(e) => {
+                          const chk = e.target.checked;
+                          setSaleLines((prev) =>
+                            prev.map((item, i) =>
+                              i === idx
+                                ? {
+                                    ...item,
+                                    autoLeaveCrates: chk,
+                                    cratesCount: chk ? item.quantity : 0,
+                                  }
+                                : item
+                            )
+                          );
+                        }}
+                      />
+                      <span>
+                        Carga {line.cratesCount} canastillas prestadas a la deuda del cliente
+                      </span>
+                    </label>
+                  </div>
+                );
+              })}
             </div>
 
+            {/* El cliente entrega canastillas vacías en esta misma visita (no deja deuda neta) */}
             <div className="p-2.5 rounded-xl bg-blue-50/70 border border-blue-200 flex items-center justify-between gap-2">
-              <label className="flex items-center gap-2 text-xs font-bold text-blue-950 cursor-pointer">
-                <input
-                  type="checkbox"
-                  className="w-4 h-4 accent-blue-700 rounded shrink-0"
-                  checked={opAutoLeaveCrates}
-                  onChange={(e) => setOpAutoLeaveCrates(e.target.checked)}
-                />
-                <span>Deja canastillas al cliente (deuda automática)</span>
-              </label>
-              {opAutoLeaveCrates && (
-                <input
-                  type="number"
-                  inputMode="numeric"
-                  min={1}
-                  className="w-16 min-h-[34px] px-2 py-1 rounded-lg border border-blue-300 bg-white text-xs font-extrabold text-center text-blue-950 tabular-nums"
-                  value={opAutoCratesCount}
-                  onChange={(e) => setOpAutoCratesCount(Number(e.target.value))}
-                />
-              )}
+              <span className="text-xs font-bold text-blue-950">
+                Canastillas devueltas por el cliente en el acto:
+              </span>
+              <input
+                type="number"
+                inputMode="numeric"
+                min={0}
+                className="w-16 min-h-[34px] px-2 py-1 rounded-lg border border-blue-300 bg-white text-xs font-extrabold text-center text-blue-950 tabular-nums"
+                value={saleReturnedCratesNow}
+                onChange={(e) =>
+                  setSaleReturnedCratesNow(Number(e.target.value))
+                }
+              />
             </div>
 
+            {/* Medio de pago */}
             <div className="grid grid-cols-3 gap-1.5">
               {(
                 [
@@ -2697,7 +3172,7 @@ export function App() {
                   key={pm.id}
                   type="button"
                   onClick={() => setOpPaymentMethod(pm.id)}
-                  className={`min-h-[42px] rounded-xl border text-xs font-bold cursor-pointer ${
+                  className={`min-h-[40px] rounded-xl border text-xs font-bold cursor-pointer ${
                     opPaymentMethod === pm.id
                       ? 'bg-green-700 border-green-700 text-white'
                       : 'bg-white border-slate-300 text-slate-800'
@@ -2717,15 +3192,27 @@ export function App() {
                   type="number"
                   inputMode="decimal"
                   min={0}
-                  max={opQuantity * opUnitPrice}
-                  className="w-full min-h-[42px] px-3 py-1.5 rounded-xl border border-slate-300 bg-white text-sm font-bold tabular-nums"
+                  className="w-full min-h-[40px] px-3 py-1 rounded-xl border border-slate-300 bg-white text-sm font-bold tabular-nums"
                   value={opPaidImmediate}
                   onChange={(e) => setOpPaidImmediate(Number(e.target.value))}
                 />
               </div>
             )}
 
-            <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-100">
+            {/* Resumen total de la venta */}
+            <div className="p-3 rounded-xl bg-slate-900 text-white flex justify-between items-center">
+              <span className="text-xs font-medium">Total de la Venta:</span>
+              <strong className="text-base sm:text-lg font-extrabold text-green-400 tabular-nums">
+                {formatCOP(
+                  saleLines.reduce(
+                    (sum, l) => sum + l.quantity * l.unitPrice,
+                    0
+                  )
+                )}
+              </strong>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2 pt-1 border-t border-slate-100">
               <button
                 type="button"
                 onClick={() => setFabModalType(null)}
@@ -2734,13 +3221,94 @@ export function App() {
                 Cancelar
               </button>
               <button
-                type="submit"
+                type="button"
+                onClick={async () => {
+                  const client = state.clients.find((c) => c.id === opClientId);
+                  let successSales = 0;
+                  const totalSaleSum = saleLines.reduce(
+                    (sum, l) => sum + l.quantity * l.unitPrice,
+                    0
+                  );
+
+                  for (const line of saleLines) {
+                    const pr = state.products.find((p) => p.id === line.productId);
+                    const lineTotal = line.quantity * line.unitPrice;
+                    const linePaidImm =
+                      opPaymentMethod === 'CREDIT'
+                        ? totalSaleSum > 0
+                          ? (lineTotal / totalSaleSum) * opPaidImmediate
+                          : 0
+                        : lineTotal;
+
+                    const res = await coreService.createOperation({
+                      actorUserId: currentUser.id,
+                      shiftId: activeShift.id,
+                      type: 'SALE',
+                      payload: {
+                        productId: pr?.id,
+                        productName: pr?.name,
+                        clientId: client?.id,
+                        clientName: client?.name,
+                        quantity: line.quantity,
+                        unitPrice: line.unitPrice,
+                        totalAmount: lineTotal,
+                        paymentMethod: opPaymentMethod,
+                        amountPaidImmediate: linePaidImm,
+                        notes: `Venta de ${line.quantity} ${pr?.name ?? 'fruta'}`,
+                      },
+                    });
+
+                    if (res.ok) {
+                      successSales++;
+                      if (line.autoLeaveCrates && line.cratesCount > 0 && client) {
+                        await coreService.createOperation({
+                          actorUserId: currentUser.id,
+                          shiftId: activeShift.id,
+                          type: 'CRATE_MOVEMENT',
+                          payload: {
+                            clientId: client.id,
+                            clientName: client.name,
+                            crateMovementType: 'DELIVERED_TO_CLIENT',
+                            crateQuantity: line.cratesCount,
+                            quantity: line.cratesCount,
+                            totalAmount: 0,
+                            notes: `Deuda de ${line.cratesCount} canastillas por venta de ${pr?.name ?? 'fruta'}`,
+                          },
+                        });
+                      }
+                    }
+                  }
+
+                  if (saleReturnedCratesNow > 0 && client) {
+                    await coreService.createOperation({
+                      actorUserId: currentUser.id,
+                      shiftId: activeShift.id,
+                      type: 'CRATE_MOVEMENT',
+                      payload: {
+                        clientId: client.id,
+                        clientName: client.name,
+                        crateMovementType: 'RETURNED_BY_CLIENT',
+                        crateQuantity: saleReturnedCratesNow,
+                        quantity: saleReturnedCratesNow,
+                        totalAmount: 0,
+                        notes: `Devolución de ${saleReturnedCratesNow} canastillas en el acto`,
+                      },
+                    });
+                  }
+
+                  setFabModalType(null);
+                  setFeedback({
+                    type: 'success',
+                    text: `Se registraron exitosamente ${successSales} productos vendidos a ${client?.name ?? 'cliente'}.`,
+                  });
+                  refreshState();
+                }}
                 className="min-h-[44px] rounded-xl bg-green-700 hover:bg-green-800 text-white font-extrabold text-xs sm:text-sm cursor-pointer"
               >
-                Guardar Venta
+                Guardar Venta Completa
               </button>
             </div>
-          </form>
+          </div>
         )}
 
         {fabModalType === 'EXPENSE' && (
