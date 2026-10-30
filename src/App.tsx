@@ -6,6 +6,7 @@ import {
   Bell,
   Boxes,
   Calendar,
+  Check,
   CheckCircle2,
   ChevronDown,
   ChevronLeft,
@@ -13,6 +14,7 @@ import {
   Clock,
   DollarSign,
   Edit3,
+  KeyRound,
   Lock,
   Package,
   Plus,
@@ -174,8 +176,7 @@ export function App() {
     text: string;
   } | null>(null);
 
-  const [showRealTimeSummaryAccordion, setShowRealTimeSummaryAccordion] =
-    useState<boolean>(false);
+  const [activeAccordion, setActiveAccordion] = useState<'REAL_TIME' | 'KPIS' | null>(null);
 
   // Modal de Venta o Gasto abierto desde el botón circular flotante (+)
   const [fabModalType, setFabModalType] = useState<'SALE' | 'EXPENSE' | null>(
@@ -278,6 +279,7 @@ export function App() {
   const [newHelperPin] = useState<string>('1122');
 
   // Estado para gestión y creación de productos por el Dueño
+  const [isProductModalOpen, setIsProductModalOpen] = useState<boolean>(false);
   const [editingProduct, setEditingProduct] = useState<ProductCatalogItem | null>(
     null
   );
@@ -863,14 +865,13 @@ export function App() {
           supplierModalMode === 'BUY_RETURN' &&
           supplierActionType === 'PURCHASE';
         const price = isPurchase ? p.defaultCostPrice : p.defaultSalePrice;
-        const code = p.shortCode || p.name.substring(0, 3).toUpperCase();
+        const code = (p.shortCode || p.name.substring(0, 3)).trim().toUpperCase();
         return {
           id: p.id,
-          // Muestra la abreviación y el nombre limpio sin textos excesivos
-          label: `[${code}] ${p.name}`,
-          sublabel: `${formatCOP(price)} · ${p.unit}`,
-          badgeText: code,
-          badgeTone: 'green' as const,
+          // Muestra únicamente la abreviación en el botón compacto
+          label: code,
+          sublabel: `${p.name} · ${formatCOP(price)}`,
+          badgeText: undefined,
         };
       }),
     [state.products, supplierModalMode, supplierActionType]
@@ -1040,9 +1041,9 @@ export function App() {
                   <div className="rounded-xl border border-slate-200 overflow-hidden bg-white">
                     <button
                       type="button"
-                      onClick={() => setShowRealTimeSummaryAccordion(true)}
+                      onClick={() => setActiveAccordion((prev) => (prev === 'REAL_TIME' ? null : 'REAL_TIME'))}
                       className={`w-full px-3.5 py-2.5 text-left flex items-center justify-between font-bold text-xs sm:text-sm transition-colors cursor-pointer ${
-                        showRealTimeSummaryAccordion
+                        activeAccordion === 'REAL_TIME'
                           ? 'bg-green-50/80 text-green-950 border-b border-green-200'
                           : 'bg-slate-50 hover:bg-slate-100 text-slate-800'
                       }`}
@@ -1053,12 +1054,12 @@ export function App() {
                       </div>
                       <ChevronDown
                         className={`w-4 h-4 transition-transform duration-200 ${
-                          showRealTimeSummaryAccordion ? 'rotate-180 text-green-800' : 'text-slate-500'
+                          activeAccordion === 'REAL_TIME' ? 'rotate-180 text-green-800' : 'text-slate-500'
                         }`}
                       />
                     </button>
 
-                    {showRealTimeSummaryAccordion && (
+                    {activeAccordion === 'REAL_TIME' && (
                       <div className="p-3.5 space-y-2.5">
                         <div className="space-y-1.5 text-xs sm:text-sm">
                           <div className="flex justify-between items-center py-1.5 border-b border-slate-100">
@@ -1110,9 +1111,9 @@ export function App() {
                   <div className="rounded-xl border border-slate-200 overflow-hidden bg-white">
                     <button
                       type="button"
-                      onClick={() => setShowRealTimeSummaryAccordion(false)}
+                      onClick={() => setActiveAccordion((prev) => (prev === 'KPIS' ? null : 'KPIS'))}
                       className={`w-full px-3.5 py-2.5 text-left flex items-center justify-between font-bold text-xs sm:text-sm transition-colors cursor-pointer ${
-                        !showRealTimeSummaryAccordion
+                        activeAccordion === 'KPIS'
                           ? 'bg-green-50/80 text-green-950 border-b border-green-200'
                           : 'bg-slate-50 hover:bg-slate-100 text-slate-800'
                       }`}
@@ -1123,12 +1124,12 @@ export function App() {
                       </div>
                       <ChevronDown
                         className={`w-4 h-4 transition-transform duration-200 ${
-                          !showRealTimeSummaryAccordion ? 'rotate-180 text-green-800' : 'text-slate-500'
+                          activeAccordion === 'KPIS' ? 'rotate-180 text-green-800' : 'text-slate-500'
                         }`}
                       />
                     </button>
 
-                    {!showRealTimeSummaryAccordion && (
+                    {activeAccordion === 'KPIS' && (
                       <div className="p-3.5">
                         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
                           <div className="p-3 rounded-xl bg-green-50/90 border border-green-200">
@@ -1873,6 +1874,31 @@ export function App() {
                   </div>
                 </div>
 
+                {/* Banner de aviso si está operando un auxiliar en vez del dueño */}
+                {currentUser.role !== 'OWNER' && (
+                  <div className="p-3.5 rounded-xl bg-amber-50 border border-amber-300 text-amber-950 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                    <div className="flex items-center gap-2.5">
+                      <AlertTriangle className="w-5 h-5 text-amber-700 shrink-0" />
+                      <div>
+                        <div className="font-bold text-xs sm:text-sm">
+                          Sesión actual: {currentUser.name} (Auxiliar)
+                        </div>
+                        <div className="text-[11px] sm:text-xs text-amber-900">
+                          Para modificar productos, auxiliares o políticas, debes iniciar con el perfil de <strong>Don Carlos (Dueño)</strong>.
+                        </div>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setAuthSheetOpen(true)}
+                      className="w-full sm:w-auto px-3.5 py-1.5 rounded-xl bg-green-700 hover:bg-green-800 text-white font-bold text-xs shrink-0 flex items-center justify-center gap-1.5 cursor-pointer shadow-xs"
+                    >
+                      <KeyRound className="w-3.5 h-3.5" />
+                      <span>Iniciar como Dueño (PIN: 1234)</span>
+                    </button>
+                  </div>
+                )}
+
                 {/* 4 Tabs del Dueño */}
                 <div className="grid grid-cols-4 gap-1 p-1 rounded-xl bg-slate-100 border border-slate-200">
                   {(
@@ -1985,124 +2011,32 @@ export function App() {
                 {/* TAB NUEVO: PRODUCTOS DEL CATÁLOGO (Gestión por el Dueño) */}
                 {ownerSubTab === 'PRODUCTS' && (
                   <div className="space-y-3.5">
-                    <form
-                      onSubmit={async (e) => {
-                        e.preventDefault();
-                        const res = await coreService.saveProductCatalogItem({
-                          actorUserId: currentUser.id,
-                          product: {
-                            id: editingProduct?.id,
-                            name: prodFormName,
-                            shortCode: prodFormCode,
-                            unit: prodFormUnit,
-                            defaultCostPrice: prodFormCost,
-                            defaultSalePrice: prodFormSale,
-                            active: true,
-                          },
-                        });
-                        if (res.ok) {
+                    <div className="flex items-center justify-between pb-1">
+                      <div>
+                        <h4 className="text-xs sm:text-sm font-bold text-slate-900">
+                          Catálogo de Frutas y Productos ({state.products.length})
+                        </h4>
+                        <p className="text-[11px] text-slate-500">
+                          Abreviaciones de fruta para selección rápida en compras y ventas
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
                           setEditingProduct(null);
                           setProdFormName('');
                           setProdFormCode('');
-                          setFeedback({ type: 'success', text: res.message });
-                        } else {
-                          setFeedback({ type: 'error', text: res.message });
-                        }
-                        refreshState();
-                      }}
-                      className="p-3.5 rounded-xl border border-slate-200 bg-slate-50 space-y-2.5"
-                    >
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs font-bold uppercase text-slate-800">
-                          {editingProduct ? 'Editar Producto' : '+ Registrar Nuevo Producto'}
-                        </span>
-                        {editingProduct && (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setEditingProduct(null);
-                              setProdFormName('');
-                              setProdFormCode('');
-                            }}
-                            className="text-xs font-bold text-slate-500 hover:text-slate-800 cursor-pointer"
-                          >
-                            Cancelar edición
-                          </button>
-                        )}
-                      </div>
-
-                      <div className="grid grid-cols-12 gap-2">
-                        <div className="col-span-8">
-                          <input
-                            type="text"
-                            required
-                            placeholder="Nombre del producto (ej: Banano Criollo)..."
-                            className="w-full min-h-[38px] px-3 py-1 rounded-xl border border-slate-300 bg-white text-xs sm:text-sm font-semibold"
-                            value={prodFormName}
-                            onChange={(e) => setProdFormName(e.target.value)}
-                          />
-                        </div>
-                        <div className="col-span-4">
-                          <input
-                            type="text"
-                            required
-                            placeholder="Abreviación (ej: BC)..."
-                            className="w-full min-h-[38px] px-2 py-1 rounded-xl border border-slate-300 bg-white text-xs sm:text-sm font-bold text-center uppercase"
-                            value={prodFormCode}
-                            onChange={(e) => setProdFormCode(e.target.value.toUpperCase())}
-                          />
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-3 gap-2">
-                        <div>
-                          <label className="block text-[10px] font-bold text-slate-600 mb-0.5">
-                            Unidad
-                          </label>
-                          <input
-                            type="text"
-                            required
-                            placeholder="Canastillas, Cajas..."
-                            className="w-full min-h-[36px] px-2 py-1 rounded-lg border border-slate-300 bg-white text-xs font-medium"
-                            value={prodFormUnit}
-                            onChange={(e) => setProdFormUnit(e.target.value)}
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-[10px] font-bold text-slate-600 mb-0.5">
-                            Costo Compra ($)
-                          </label>
-                          <input
-                            type="number"
-                            inputMode="decimal"
-                            min={0}
-                            className="w-full min-h-[36px] px-2 py-1 rounded-lg border border-slate-300 bg-white text-xs font-extrabold tabular-nums"
-                            value={prodFormCost}
-                            onChange={(e) => setProdFormCost(Number(e.target.value))}
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-[10px] font-bold text-slate-600 mb-0.5">
-                            Precio Venta ($)
-                          </label>
-                          <input
-                            type="number"
-                            inputMode="decimal"
-                            min={0}
-                            className="w-full min-h-[36px] px-2 py-1 rounded-lg border border-slate-300 bg-white text-xs font-extrabold tabular-nums"
-                            value={prodFormSale}
-                            onChange={(e) => setProdFormSale(Number(e.target.value))}
-                          />
-                        </div>
-                      </div>
-
-                      <button
-                        type="submit"
-                        className="w-full min-h-[40px] rounded-xl bg-green-700 hover:bg-green-800 text-white font-bold text-xs shadow-xs cursor-pointer"
+                          setProdFormUnit('Canastillas');
+                          setProdFormCost(22000);
+                          setProdFormSale(32000);
+                          setIsProductModalOpen(true);
+                        }}
+                        className="px-3 py-1.5 rounded-xl bg-green-700 hover:bg-green-800 text-white font-bold text-xs flex items-center gap-1.5 cursor-pointer shadow-xs"
                       >
-                        {editingProduct ? 'Guardar Cambios de Producto' : 'Guardar Producto en Catálogo'}
+                        <Plus className="w-4 h-4" />
+                        <span>Nuevo Producto</span>
                       </button>
-                    </form>
+                    </div>
 
                     {/* Tabla de 2 columnas de productos registrados con paginación */}
                     <div className="overflow-hidden rounded-xl border border-slate-200">
@@ -2149,8 +2083,9 @@ export function App() {
                                         setProdFormUnit(p.unit);
                                         setProdFormCost(p.defaultCostPrice);
                                         setProdFormSale(p.defaultSalePrice);
+                                        setIsProductModalOpen(true);
                                       }}
-                                      className="px-2 py-0.5 rounded bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-[11px] border border-slate-300 cursor-pointer"
+                                      className="px-2.5 py-1 rounded-lg bg-green-50 hover:bg-green-100 text-green-800 font-bold text-xs border border-green-200 cursor-pointer"
                                     >
                                       Editar
                                     </button>
@@ -2515,14 +2450,17 @@ export function App() {
                 <button
                   type="button"
                   onClick={() => {
-                    const firstProd = state.products[0];
+                    const pickedIds = new Set(supplierLines.map((l) => l.productId));
+                    const nextProd =
+                      state.products.find((p) => !pickedIds.has(p.id)) ||
+                      state.products[0];
                     setSupplierLines((prev) => [
                       ...prev,
                       {
-                        productId: firstProd?.id || 'PROD-BANANO-PRIMERA',
+                        productId: nextProd?.id || 'PROD-BANANO-PRIMERA',
                         deliveredQty: 2,
                         acceptedQty: 2,
-                        unitPrice: firstProd?.defaultCostPrice || 28000,
+                        unitPrice: nextProd?.defaultCostPrice || 28000,
                         compensationType: 'CREDIT_BALANCE',
                       },
                     ]);
@@ -3130,16 +3068,19 @@ export function App() {
                 <button
                   type="button"
                   onClick={() => {
-                    const firstP = state.products[0];
-                    const usesCr = firstP?.unit
+                    const pickedIds = new Set(saleLines.map((l) => l.productId));
+                    const nextP =
+                      state.products.find((p) => !pickedIds.has(p.id)) ||
+                      state.products[0];
+                    const usesCr = nextP?.unit
                       .toLowerCase()
                       .includes('canastilla') ?? false;
                     setSaleLines((prev) => [
                       ...prev,
                       {
-                        productId: firstP?.id || 'PROD-BANANO-PRIMERA',
+                        productId: nextP?.id || 'PROD-BANANO-PRIMERA',
                         quantity: 3,
-                        unitPrice: firstP?.defaultSalePrice || 38000,
+                        unitPrice: nextP?.defaultSalePrice || 38000,
                         autoLeaveCrates: usesCr,
                         cratesCount: usesCr ? 3 : 0,
                       },
@@ -4276,6 +4217,156 @@ export function App() {
         )}
       </BottomSheet>
 
+
+      {/* ====================================================================
+          MODAL CENTRADO: GESTIÓN DE PRODUCTO (CREAR / EDITAR EN MODAL)
+         ==================================================================== */}
+      <BottomSheet
+        isOpen={isProductModalOpen}
+        onClose={() => {
+          setIsProductModalOpen(false);
+          setEditingProduct(null);
+        }}
+        title={editingProduct ? 'Editar Producto' : 'Nuevo Producto en Catálogo'}
+        subtitle={
+          editingProduct
+            ? `Modificar precios y abreviación de ${editingProduct.name}`
+            : 'Registrar nuevo producto para venta y compra en ruta'
+        }
+        icon={<Package className="w-5 h-5 text-green-700" />}
+      >
+        <form
+          onSubmit={async (e) => {
+            e.preventDefault();
+            if (currentUser.role !== 'OWNER') {
+              setFeedback({
+                type: 'error',
+                text: 'Solo Don Carlos (Dueño) puede modificar productos. Inicia sesión con la llave (PIN: 1234).',
+              });
+              setAuthSheetOpen(true);
+              return;
+            }
+            const res = await coreService.saveProductCatalogItem({
+              actorUserId: currentUser.id,
+              product: {
+                id: editingProduct?.id,
+                name: prodFormName,
+                shortCode: prodFormCode,
+                unit: prodFormUnit,
+                defaultCostPrice: prodFormCost,
+                defaultSalePrice: prodFormSale,
+                active: true,
+              },
+            });
+            if (res.ok) {
+              setIsProductModalOpen(false);
+              setEditingProduct(null);
+              setProdFormName('');
+              setProdFormCode('');
+              setFeedback({ type: 'success', text: res.message });
+            } else {
+              setFeedback({ type: 'error', text: res.message });
+            }
+            refreshState();
+          }}
+          className="space-y-3.5"
+        >
+          <div>
+            <label className="block text-xs font-bold text-slate-800 mb-1">
+              Nombre de la Fruta / Producto
+            </label>
+            <input
+              type="text"
+              required
+              placeholder="Ej: Banano Criollo Maduro"
+              className="w-full min-h-[44px] px-3 py-2 rounded-xl border border-slate-300 bg-white text-sm font-semibold text-slate-900"
+              value={prodFormName}
+              onChange={(e) => setProdFormName(e.target.value)}
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-2.5">
+            <div>
+              <label className="block text-xs font-bold text-slate-800 mb-1">
+                Abreviación (Máx 4 letras)
+              </label>
+              <input
+                type="text"
+                required
+                maxLength={5}
+                placeholder="Ej: BC, BAN, BV"
+                className="w-full min-h-[44px] px-3 py-2 rounded-xl border border-slate-300 bg-white text-sm font-extrabold uppercase text-green-900 tracking-wider"
+                value={prodFormCode}
+                onChange={(e) => setProdFormCode(e.target.value.toUpperCase())}
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-slate-800 mb-1">
+                Unidad de Empaque
+              </label>
+              <input
+                type="text"
+                required
+                placeholder="Canastillas, Cajas..."
+                className="w-full min-h-[44px] px-3 py-2 rounded-xl border border-slate-300 bg-white text-sm font-medium"
+                value={prodFormUnit}
+                onChange={(e) => setProdFormUnit(e.target.value)}
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-2.5">
+            <div>
+              <label className="block text-xs font-bold text-slate-800 mb-1">
+                Costo Compra Proveedor ($)
+              </label>
+              <input
+                type="number"
+                inputMode="decimal"
+                min={0}
+                required
+                className="w-full min-h-[44px] px-3 py-2 rounded-xl border border-slate-300 bg-white text-base font-extrabold tabular-nums text-slate-900"
+                value={prodFormCost}
+                onChange={(e) => setProdFormCost(Number(e.target.value))}
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-slate-800 mb-1">
+                Precio Venta Cliente ($)
+              </label>
+              <input
+                type="number"
+                inputMode="decimal"
+                min={0}
+                required
+                className="w-full min-h-[44px] px-3 py-2 rounded-xl border border-slate-300 bg-white text-base font-extrabold tabular-nums text-green-900"
+                value={prodFormSale}
+                onChange={(e) => setProdFormSale(Number(e.target.value))}
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-2.5 pt-2 border-t border-slate-100">
+            <button
+              type="button"
+              onClick={() => {
+                setIsProductModalOpen(false);
+                setEditingProduct(null);
+              }}
+              className="min-h-[46px] px-3 py-2 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 font-semibold text-sm cursor-pointer"
+            >
+              Cancelar
+            </button>
+            <button
+              type="submit"
+              className="min-h-[46px] px-3 py-2 rounded-xl bg-green-700 hover:bg-green-800 text-white font-bold text-sm shadow-xs cursor-pointer flex items-center justify-center gap-1.5"
+            >
+              <Check className="w-4 h-4" />
+              <span>{editingProduct ? 'Guardar Cambios' : 'Crear Producto'}</span>
+            </button>
+          </div>
+        </form>
+      </BottomSheet>
       {/* ====================================================================
           MODAL CENTRADO 5: CAMBIO DE SESIÓN Y ROL POR PIN
          ==================================================================== */}
@@ -4291,6 +4382,29 @@ export function App() {
             type: 'success',
             text: `Sesión iniciada como ${u?.name ?? userId}.`,
           });
+          refreshState();
+        }}
+        onUpdatePin={async (targetUserId, newPin) => {
+          const res = await coreService.updateUserPin({
+            actorUserId: currentUser.id,
+            targetUserId,
+            newPin,
+          });
+          if (res.ok) {
+            refreshState();
+          }
+          return res;
+        }}
+        onLogout={() => {
+          const helper = state.users.find((u) => u.role !== 'OWNER');
+          if (helper) {
+            setActiveUserId(helper.id);
+          }
+          setFeedback({
+            type: 'warning',
+            text: 'Has cerrado la sesión del perfil. Selecciona un usuario e ingresa el PIN.',
+          });
+          setAuthSheetOpen(true);
         }}
       />
 

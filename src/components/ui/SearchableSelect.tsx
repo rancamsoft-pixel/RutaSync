@@ -96,11 +96,11 @@ export const SearchableSelect: React.FC<SearchableSelectProps> = ({
         </div>
 
         <div className="flex items-center gap-1.5 shrink-0">
-          {selectedOption?.badgeText && (
+          {!compact && selectedOption?.badgeText && (
             <span
-              className={`font-bold px-1.5 py-0.5 rounded border tabular-nums ${
-                compact ? 'text-[11px]' : 'text-xs'
-              } ${getBadgeClasses(selectedOption.badgeTone)}`}
+              className={`font-bold px-1.5 py-0.5 rounded border tabular-nums text-xs ${getBadgeClasses(
+                selectedOption.badgeTone
+              )}`}
             >
               {selectedOption.badgeText}
             </span>
@@ -167,10 +167,17 @@ export const SearchableSelect: React.FC<SearchableSelectProps> = ({
                         <Check className="w-3.5 h-3.5 text-green-700 shrink-0" />
                       )}
                       <div className="min-w-0">
-                        <div className="text-xs sm:text-sm font-semibold truncate">
-                          {opt.label}
+                        <div className="text-xs sm:text-sm font-semibold truncate flex items-center gap-1.5">
+                          {compact && (
+                            <span className="px-1.5 py-0.5 rounded bg-green-100 text-green-900 border border-green-200 text-[11px] font-mono font-bold shrink-0">
+                              {opt.label}
+                            </span>
+                          )}
+                          <span className="truncate">
+                            {compact && opt.sublabel ? opt.sublabel : opt.label}
+                          </span>
                         </div>
-                        {opt.sublabel && (
+                        {!compact && opt.sublabel && (
                           <div className="text-[11px] text-slate-500 truncate">
                             {opt.sublabel}
                           </div>

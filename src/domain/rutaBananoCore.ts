@@ -511,6 +511,67 @@ export class RutaBananoCoreService {
   // SECCIÓN 2: GESTIÓN DE AUXILIARES Y CONFIGURACIÓN DEL DUEÑO
   // ============================================================================
 
+  public async updateUserPin(params: {
+    actorUserId: string;
+    targetUserId: string;
+    newPin: string;
+  }): Promise<CoreOperationResult<UserAccount>> {
+    const actor = this.getUserById(params.actorUserId);
+    const target = this.getUserById(params.targetUserId);
+
+    if (!actor || !target) {
+      return { ok: false, code: 'USER_NOT_FOUND', message: 'Usuario no encontrado.' };
+    }
+
+    // El dueño puede cambiar el PIN de cualquiera, o el propio usuario puede cambiar su propio PIN
+    if (actor.role !== 'OWNER' && actor.id !== target.id) {
+      return {
+        ok: false,
+        code: 'PERMISSION_DENIED',
+        message: 'Solo el dueño o el propio usuario pueden cambiar su PIN.',
+      };
+    }
+
+    if (!params.newPin || params.newPin.length < 4) {
+      return {
+        ok: false,
+        code: 'INVALID_PIN',
+        message: 'El nuevo PIN debe tener al menos 4 dígitos.',
+      };
+    }
+
+    const hashed = deterministicHash(params.newPin);
+    target.pinOrCredentialHash = hashed;
+
+    this.appendAudit({
+      businessId: this.state.config.businessId,
+      actorId: actor.id,
+      actorName: actor.name,
+      actorRole: actor.role,
+      actionType: 'USER_STATUS_CHANGED',
+      reason: `Cambio de PIN para ${target.name}`,
+      previousValue: null,
+      newValue: { userId: target.id, pinUpdated: true },
+      result: 'SUCCESS',
+    });
+
+    await this.persistAndEnqueue({
+      idempotencyKey: `USER-PIN-${target.id}-${Date.now()}`,
+      businessId: this.state.config.businessId,
+      entityType: 'USER',
+      entityId: target.id,
+      action: 'UPDATE',
+      payload: { pinOrCredentialHash: hashed },
+    });
+
+    return {
+      ok: true,
+      code: 'OK',
+      message: `El PIN de acceso de ${target.name} se actualizó correctamente.`,
+      data: target,
+    };
+  }
+
   public async setHelperActiveStatus(params: {
     actorUserId: string;
     targetHelperId: string;
@@ -597,7 +658,12 @@ export class RutaBananoCoreService {
       this.state.config.businessId
     );
     if (!check.allowed) {
-      return { ok: false, code: check.code, message: check.message };
+      return {
+        ok: false,
+        code: check.code,
+        message:
+          'Solo el dueño o administrador puede gestionar productos del catálogo. Por favor inicia sesión como Don Carlos (Dueño) con PIN 1234.',
+      };
     }
 
     if (!params.name.trim()) {
@@ -675,7 +741,12 @@ export class RutaBananoCoreService {
       this.state.config.businessId
     );
     if (!check.allowed) {
-      return { ok: false, code: check.code, message: check.message };
+      return {
+        ok: false,
+        code: check.code,
+        message:
+          'Solo el dueño o administrador puede gestionar productos del catálogo. Por favor inicia sesión como Don Carlos (Dueño) con PIN 1234.',
+      };
     }
 
     if (!params.product.name.trim()) {
@@ -859,7 +930,12 @@ export class RutaBananoCoreService {
       this.state.config.businessId
     );
     if (!check.allowed) {
-      return { ok: false, code: check.code, message: check.message };
+      return {
+        ok: false,
+        code: check.code,
+        message:
+          'Solo el dueño o administrador puede gestionar productos del catálogo. Por favor inicia sesión como Don Carlos (Dueño) con PIN 1234.',
+      };
     }
 
     const unitId = params.unitId ?? this.state.config.defaultUnitId;
@@ -1982,7 +2058,12 @@ export class RutaBananoCoreService {
       this.state.config.businessId
     );
     if (!check.allowed) {
-      return { ok: false, code: check.code, message: check.message };
+      return {
+        ok: false,
+        code: check.code,
+        message:
+          'Solo el dueño o administrador puede gestionar productos del catálogo. Por favor inicia sesión como Don Carlos (Dueño) con PIN 1234.',
+      };
     }
 
     const conflict = this.state.syncConflicts.find((c) => c.id === params.conflictId);
