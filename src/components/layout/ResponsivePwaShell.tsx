@@ -11,12 +11,14 @@ import {
   Plus,
   Receipt,
   ShoppingBag,
+  ShoppingCart,
   Truck,
   User,
   UserCheck,
   Users,
   Wifi,
   WifiOff,
+  X,
 } from 'lucide-react';
 import { UserAccount } from '../../types/domain';
 
@@ -60,6 +62,7 @@ export const ResponsivePwaShell: React.FC<ResponsivePwaShellProps> = ({
   rightPanel,
 }) => {
   const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(false);
+  const [fabMenuOpen, setFabMenuOpen] = useState<boolean>(false);
 
   // Nombre corto limpio sin paréntesis redundantes para móvil
   const cleanUserName = activeUser.name.replace(/\s*\(.*?\)\s*/g, '').trim();
@@ -110,7 +113,6 @@ export const ResponsivePwaShell: React.FC<ResponsivePwaShellProps> = ({
           sidebarCollapsed ? 'w-20' : 'w-72'
         }`}
       >
-        {/* Cabecera de marca RutaSync */}
         <div className="h-16 px-4 border-b border-slate-100 flex items-center justify-between gap-2">
           <div className="flex items-center gap-3 overflow-hidden">
             <div className="w-10 h-10 rounded-xl bg-green-700 text-white flex items-center justify-center shrink-0 shadow-xs">
@@ -145,7 +147,6 @@ export const ResponsivePwaShell: React.FC<ResponsivePwaShellProps> = ({
           </button>
         </div>
 
-        {/* Enlaces de navegación */}
         <nav className="flex-1 p-3 space-y-1.5" aria-label="Secciones">
           {navItems.map((item) => {
             const isActive = activeTab === item.id;
@@ -181,7 +182,6 @@ export const ResponsivePwaShell: React.FC<ResponsivePwaShellProps> = ({
           })}
         </nav>
 
-        {/* Sesión y conexión a Firebase en pie del menú lateral */}
         <div className="p-3 border-t border-slate-100 space-y-2">
           <button
             type="button"
@@ -244,11 +244,10 @@ export const ResponsivePwaShell: React.FC<ResponsivePwaShellProps> = ({
           CONTENIDO PRINCIPAL CON CABECERA FIJA SIEMPRE VISIBLE AL HACER SCROLL
          ==================================================================== */}
       <div
-        className={`flex-1 min-w-0 w-full max-w-full flex flex-col pb-32 lg:pb-16 transition-all duration-200 ${
+        className={`flex-1 min-w-0 w-full max-w-full flex flex-col pb-28 lg:pb-16 transition-all duration-200 ${
           sidebarCollapsed ? 'lg:pl-20' : 'lg:pl-72'
         }`}
       >
-        {/* BARRA SUPERIOR FIJA (FIXED) SIEMPRE VISIBLE AUNQUE BAJE EL SCROLL */}
         <header
           className={`fixed top-0 right-0 left-0 z-30 bg-white/95 backdrop-blur-md border-b border-slate-200 shadow-2xs transition-all duration-200 ${
             sidebarCollapsed ? 'lg:left-20' : 'lg:left-72'
@@ -262,11 +261,11 @@ export const ResponsivePwaShell: React.FC<ResponsivePwaShellProps> = ({
               </div>
               <div className="min-w-0">
                 <div className="flex items-center gap-1.5">
-                  <h1 className="text-base sm:text-lg font-extrabold text-slate-900 tracking-tight truncate">
+                  <h1 className="text-base sm:text-lg font-extrabold text-slate-900 tracking-tight shrink-0">
                     RutaSync
                   </h1>
                   {expectedCashFormatted && (
-                    <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-extrabold bg-green-50 text-green-800 border border-green-200 tabular-nums shrink-0">
+                    <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-extrabold bg-green-50 text-green-800 border border-green-200 tabular-nums truncate">
                       Caja: {expectedCashFormatted}
                     </span>
                   )}
@@ -288,7 +287,6 @@ export const ResponsivePwaShell: React.FC<ResponsivePwaShellProps> = ({
 
             {/* Botones de Campanita (Autorizaciones), Usuario y Conexión */}
             <div className="flex items-center gap-1.5 shrink-0">
-              {/* Campanita de Autorizaciones / Notificaciones */}
               <button
                 type="button"
                 onClick={onOpenNotificationsModal}
@@ -308,7 +306,6 @@ export const ResponsivePwaShell: React.FC<ResponsivePwaShellProps> = ({
                 )}
               </button>
 
-              {/* Cambiar Usuario (PIN) */}
               <button
                 type="button"
                 onClick={onOpenAuthSheet}
@@ -319,7 +316,6 @@ export const ResponsivePwaShell: React.FC<ResponsivePwaShellProps> = ({
                 <span className="hidden sm:inline">Usuario</span>
               </button>
 
-              {/* Conexión Firebase / Offline */}
               <button
                 type="button"
                 onClick={onOpenConnectionSheet}
@@ -368,44 +364,83 @@ export const ResponsivePwaShell: React.FC<ResponsivePwaShellProps> = ({
           <div
             className={
               rightPanel
-                ? 'xl:col-span-8 min-w-0 space-y-4 sm:space-y-5'
-                : 'xl:col-span-12 min-w-0 space-y-4 sm:space-y-5'
+                ? 'xl:col-span-8 min-w-0 space-y-4'
+                : 'xl:col-span-12 min-w-0 space-y-4'
             }
           >
             {children}
           </div>
           {rightPanel && (
-            <aside className="xl:col-span-4 min-w-0 xl:sticky xl:top-20 space-y-4 sm:space-y-5">
+            <aside className="xl:col-span-4 min-w-0 xl:sticky xl:top-20 space-y-4">
               {rightPanel}
             </aside>
           )}
         </div>
 
         {/* ====================================================================
-            BOTÓN FLOTANTE (FAB) SIEMPRE ACCESIBLE PARA VENTAS Y GASTOS
+            UN SOLO BOTÓN CIRCULAR FLOTANTE (+) CON SUBMENÚ (VENTA | GASTO)
            ==================================================================== */}
         {shiftOpen && activeUser.active && (
-          <div className="fixed bottom-[72px] lg:bottom-6 right-3 sm:right-5 z-30 flex items-center gap-2">
-            <button
-              type="button"
-              onClick={onOpenQuickExpense}
-              className="min-h-[48px] px-3.5 py-2.5 rounded-2xl bg-amber-600 hover:bg-amber-700 active:bg-amber-800 text-white font-bold text-xs sm:text-sm shadow-lg border border-amber-500 flex items-center gap-1.5 transition-transform active:scale-95 cursor-pointer"
-              title="Registrar Gasto Operativo o Pago de Personal"
-            >
-              <Receipt className="w-4 h-4 shrink-0" />
-              <span>+ Gasto</span>
-            </button>
+          <>
+            {fabMenuOpen && (
+              <div
+                className="fixed inset-0 z-30 bg-slate-900/20 backdrop-blur-[1px]"
+                onClick={() => setFabMenuOpen(false)}
+              />
+            )}
 
-            <button
-              type="button"
-              onClick={onOpenQuickSale}
-              className="min-h-[54px] px-4 sm:px-5 py-3 rounded-2xl bg-green-700 hover:bg-green-800 active:bg-green-900 text-white font-extrabold text-sm sm:text-base shadow-xl border border-green-600 flex items-center gap-2 transition-transform active:scale-95 cursor-pointer"
-              title="Anotar Venta Rápida"
-            >
-              <Plus className="w-5 h-5 stroke-[2.5] shrink-0" />
-              <span>Anotar Venta</span>
-            </button>
-          </div>
+            <div className="fixed bottom-[74px] lg:bottom-6 right-4 sm:right-6 z-40 flex flex-col items-end gap-2.5">
+              {fabMenuOpen && (
+                <div className="flex flex-col items-end gap-2 mb-1">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setFabMenuOpen(false);
+                      onOpenQuickExpense();
+                    }}
+                    className="min-h-[46px] px-4 py-2.5 rounded-2xl bg-white hover:bg-amber-50 text-slate-900 font-bold text-sm shadow-xl border border-slate-200 flex items-center gap-2.5 cursor-pointer"
+                  >
+                    <span className="w-8 h-8 rounded-xl bg-amber-100 text-amber-800 flex items-center justify-center">
+                      <Receipt className="w-4 h-4" />
+                    </span>
+                    <span>Registrar Gasto</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setFabMenuOpen(false);
+                      onOpenQuickSale();
+                    }}
+                    className="min-h-[48px] px-4 py-2.5 rounded-2xl bg-white hover:bg-green-50 text-slate-900 font-bold text-sm shadow-xl border border-slate-200 flex items-center gap-2.5 cursor-pointer"
+                  >
+                    <span className="w-8 h-8 rounded-xl bg-green-100 text-green-800 flex items-center justify-center">
+                      <ShoppingCart className="w-4 h-4" />
+                    </span>
+                    <span>Registrar Venta</span>
+                  </button>
+                </div>
+              )}
+
+              <button
+                type="button"
+                onClick={() => setFabMenuOpen((prev) => !prev)}
+                aria-label="Abrir menú rápido de Venta o Gasto"
+                title="Registrar Venta o Gasto"
+                className={`w-14 h-14 rounded-full text-white shadow-xl flex items-center justify-center transition-all active:scale-95 cursor-pointer ${
+                  fabMenuOpen
+                    ? 'bg-slate-900 hover:bg-slate-800'
+                    : 'bg-green-700 hover:bg-green-800'
+                }`}
+              >
+                {fabMenuOpen ? (
+                  <X className="w-6 h-6 stroke-[2.5]" />
+                ) : (
+                  <Plus className="w-7 h-7 stroke-[2.5]" />
+                )}
+              </button>
+            </div>
+          </>
         )}
 
         {/* ====================================================================

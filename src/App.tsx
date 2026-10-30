@@ -3,17 +3,15 @@ import {
   AlertCircle,
   AlertTriangle,
   ArrowRight,
-  Ban,
   Bell,
   Boxes,
   Calendar,
   CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
   Clock,
   DollarSign,
   Edit3,
-  FileText,
-  History,
-  KeyRound,
   Lock,
   Package,
   Plus,
@@ -70,6 +68,48 @@ function formatCOP(amount: number): string {
   return `$${Math.round(amount).toLocaleString('es-CO')}`;
 }
 
+/**
+ * Controles reutilizables de paginación compacta para todas las tablas
+ */
+const TablePagination: React.FC<{
+  currentPage: number;
+  totalItems: number;
+  pageSize: number;
+  onPageChange: (page: number) => void;
+}> = ({ currentPage, totalItems, pageSize, onPageChange }) => {
+  const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
+  const safePage = Math.min(Math.max(1, currentPage), totalPages);
+
+  return (
+    <div className="flex items-center justify-between gap-2 pt-2.5 border-t border-slate-200 text-xs text-slate-600">
+      <span className="font-medium tabular-nums">
+        Total: <strong>{totalItems}</strong> reg. · Pág.{' '}
+        <strong>{safePage}</strong> de <strong>{totalPages}</strong>
+      </span>
+      <div className="flex items-center gap-1.5">
+        <button
+          type="button"
+          disabled={safePage <= 1}
+          onClick={() => onPageChange(safePage - 1)}
+          className="min-h-[34px] px-2.5 py-1 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 disabled:opacity-40 font-bold text-slate-800 flex items-center gap-1 cursor-pointer"
+        >
+          <ChevronLeft className="w-3.5 h-3.5" />
+          <span>Ant.</span>
+        </button>
+        <button
+          type="button"
+          disabled={safePage >= totalPages}
+          onClick={() => onPageChange(safePage + 1)}
+          className="min-h-[34px] px-2.5 py-1 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 disabled:opacity-40 font-bold text-slate-800 flex items-center gap-1 cursor-pointer"
+        >
+          <span>Sig.</span>
+          <ChevronRight className="w-3.5 h-3.5" />
+        </button>
+      </div>
+    </div>
+  );
+};
+
 export function App() {
   const [state, setState] = useState<RutaBananoPersistedState>(
     coreService.getState()
@@ -79,28 +119,49 @@ export function App() {
     useState<boolean>(false);
   const [authSheetOpen, setAuthSheetOpen] = useState<boolean>(false);
 
-  // Modales solicitados por el usuario:
-  // 1. Modal de Cerrar Día (desde Ruta de Hoy)
+  // Modales siempre centrados y de altura constante:
   const [closureModalOpen, setClosureModalOpen] = useState<boolean>(false);
-  // 2. Modal de Campanita (Autorizaciones / Notificaciones)
   const [notificationsModalOpen, setNotificationsModalOpen] =
     useState<boolean>(false);
-  // 3. Modal de Auditoría y Pruebas seccionado por Tabs (desde vista Dueño)
   const [auditModalOpen, setAuditModalOpen] = useState<boolean>(false);
   const [auditModalTab, setAuditModalTab] = useState<
     'LOGS' | 'CONFLICTS' | 'TESTS'
   >('LOGS');
 
-  // Sub-tabs de la vista Dueño
-  const [ownerSubTab, setOwnerSubTab] = useState<
-    'POLICIES' | 'HELPERS' | 'ADJUSTMENTS'
-  >('POLICIES');
+  // 1. Sub-tabs de la sección unificada en "Ruta de Hoy" (4 secciones convertidas en 4 tabs)
+  const [operateSubTab, setOperateSubTab] = useState<
+    'INVENTORY' | 'CRATES' | 'OPERATIONS' | 'FINANCE'
+  >('INVENTORY');
 
-  // Buscador y filtro en vista Cobros y Deudas (Clientes)
+  // 2. Sub-tabs de la sección unificada en "Compras y Devoluciones" (Proveedores)
+  const [supplierSubTab, setSupplierSubTab] = useState<
+    'PROVIDERS_TABLE' | 'PURCHASE_FORM' | 'RETURN_FORM' | 'CRATES_FORM'
+  >('PROVIDERS_TABLE');
+  const [supplierSearchQuery, setSupplierSearchQuery] = useState<string>('');
+
+  // 3. Sub-tabs de la sección unificada en "Cobros y Deudas" (Clientes)
+  const [clientSubTab, setClientSubTab] = useState<
+    'PORTFOLIO_TABLE' | 'COLLECT_DEBT_TAB' | 'RETURN_CRATES_TAB'
+  >('PORTFOLIO_TABLE');
   const [clientSearchQuery, setClientSearchQuery] = useState<string>('');
   const [clientFilterMode, setClientFilterMode] = useState<
     'ALL' | 'WITH_MONEY_DEBT' | 'WITH_CRATE_DEBT'
   >('ALL');
+
+  // 4. Sub-tabs de la vista Dueño
+  const [ownerSubTab, setOwnerSubTab] = useState<
+    'POLICIES' | 'HELPERS' | 'ADJUSTMENTS'
+  >('POLICIES');
+
+  // Estados de paginación para todas las tablas
+  const [opsPage, setOpsPage] = useState<number>(1);
+  const [suppliersPage, setSuppliersPage] = useState<number>(1);
+  const [clientsPage, setClientsPage] = useState<number>(1);
+  const [helpersPage, setHelpersPage] = useState<number>(1);
+  const [closuresPage, setClosuresPage] = useState<number>(1);
+  const [auditLogsPage, setAuditLogsPage] = useState<number>(1);
+  const [testsPage, setTestsPage] = useState<number>(1);
+  const [authReqsPage, setAuthReqsPage] = useState<number>(1);
 
   const [activeUserId, setActiveUserId] = useState<string>('USR-HELPER-01');
   const [activeTab, setActiveTab] = useState<NavTabId>('OPERATE');
@@ -110,15 +171,12 @@ export function App() {
     text: string;
   } | null>(null);
 
-  // Estado para crear nueva operación (Bottom Sheet optimizado)
-  const [newOpModalType, setNewOpModalType] = useState<OperationType | null>(
+  // Modal de Venta o Gasto abierto desde el botón circular flotante (+)
+  const [fabModalType, setFabModalType] = useState<'SALE' | 'EXPENSE' | null>(
     null
   );
-  // Contexto del modal de operación: 'FAB' (Venta/Gasto), 'SUPPLIER' (Compra/Devolución/Canastilla Prov), 'CLIENT' (Cobro/Devolución Canastilla Cliente)
-  const [opModalContext, setOpModalContext] = useState<
-    'FAB' | 'SUPPLIER' | 'CLIENT'
-  >('FAB');
 
+  // Campos compartidos de formularios (Venta, Gasto, Compra, Devolución, Cobro, Canastillas)
   const [opProductId, setOpProductId] = useState<string>('PROD-BANANO-PRIMERA');
   const [opClientId, setOpClientId] = useState<string>('CLI-DON-JOSE');
   const [opSupplierId, setOpSupplierId] = useState<string>('SUP-ESPERANZA');
@@ -149,7 +207,7 @@ export function App() {
   );
   const [opNotes, setOpNotes] = useState<string>('');
 
-  // Estado para editar / solicitar autorización de operación existente (Bottom Sheet)
+  // Estado para editar / solicitar autorización de operación existente (Modal centrado)
   const [editingOp, setEditingOp] = useState<RouteOperation | null>(null);
   const [editNewAmount, setEditNewAmount] = useState<number>(0);
   const [editNewQty, setEditNewQty] = useState<number>(0);
@@ -200,7 +258,6 @@ export function App() {
       }
       setIsHydrating(false);
 
-      // Hidratar y sincronizar todas las colecciones con Cloud Firestore (rutasync-banano)
       try {
         const remote = await coreService.pullFromFirebase();
         setState({ ...remote });
@@ -208,7 +265,7 @@ export function App() {
           coreService.getState()
         );
       } catch {
-        // Si inicia sin cobertura móvil, continúa operando con IndexedDB local
+        // Continúa operando con IndexedDB local si inicia sin cobertura móvil
       }
     });
 
@@ -237,7 +294,7 @@ export function App() {
     (a) => a.status === 'PENDING'
   );
 
-  // Cálculo en tiempo real de deuda monetaria y deuda de canastillas por cada cliente
+  // Cálculo en tiempo real de deuda monetaria y deuda automática de canastillas por cada cliente
   const clientBalances = useMemo(() => {
     const shiftOps = activeShift
       ? state.operations.filter((o) => o.shiftId === activeShift.id)
@@ -328,6 +385,16 @@ export function App() {
     });
   }, [clientBalances, clientSearchQuery, clientFilterMode]);
 
+  const filteredSuppliers = useMemo(() => {
+    const q = supplierSearchQuery.trim().toLowerCase();
+    if (!q) return state.suppliers;
+    return state.suppliers.filter(
+      (s) =>
+        s.name.toLowerCase().includes(q) ||
+        (s.phone ?? '').toLowerCase().includes(q)
+    );
+  }, [state.suppliers, supplierSearchQuery]);
+
   const handleToggleOnline = async () => {
     const next = !isOnline;
     setIsOnline(next);
@@ -347,90 +414,40 @@ export function App() {
     refreshState();
   };
 
-  const openOperationModal = (
-    type: OperationType,
-    context: 'FAB' | 'SUPPLIER' | 'CLIENT' = 'FAB',
-    options?: {
-      preselectedClientId?: string;
-      preselectedSupplierId?: string;
-      crateMovementType?: CrateMovementType;
-    }
-  ) => {
+  // Abre el modal centrado exclusivamente para Venta o Gasto (desde el botón circular +)
+  const openFabModal = (type: 'SALE' | 'EXPENSE') => {
     setFeedback(null);
-    setOpModalContext(context);
-    setNewOpModalType(type);
-
     const defaultProd = state.products[0];
     setOpProductId(defaultProd.id);
     setOpQuantity(5);
-    setOpUnitPrice(
-      type === 'PURCHASE'
-        ? defaultProd.defaultCostPrice
-        : defaultProd.defaultSalePrice
-    );
+    setOpUnitPrice(defaultProd.defaultSalePrice);
     const prodUsesCrates = defaultProd.unit
       .toLowerCase()
       .includes('canastilla');
     setOpAutoLeaveCrates(prodUsesCrates);
     setOpAutoCratesCount(5);
-
-    if (options?.preselectedClientId) {
-      setOpClientId(options.preselectedClientId);
-      const bal = clientBalances.find(
-        (b) => b.client.id === options.preselectedClientId
-      );
-      if (bal) {
-        if (type === 'COLLECTION_PAST_DEBT') {
-          if (
-            bal.remainingPastPrincipal <= 0 &&
-            bal.currentShiftCreditPending > 0
-          ) {
-            setOpCollectionKind('CURRENT');
-            setOpCollectionAmount(bal.currentShiftCreditPending);
-            setOpCollectionInterest(0);
-          } else {
-            setOpCollectionKind('PAST');
-            setOpCollectionAmount(bal.remainingPastPrincipal || 50000);
-            setOpCollectionInterest(bal.remainingPastInterest);
-          }
-        }
-        if (type === 'CRATE_MOVEMENT' && bal.totalCratesOwed > 0) {
-          setOpQuantity(bal.totalCratesOwed);
-        }
-      }
-    }
-    if (options?.preselectedSupplierId) {
-      setOpSupplierId(options.preselectedSupplierId);
-    }
-    if (options?.crateMovementType) {
-      setOpCrateType(options.crateMovementType);
-    } else if (context === 'CLIENT') {
-      setOpCrateType('RETURNED_BY_CLIENT');
-    } else if (context === 'SUPPLIER') {
-      setOpCrateType('RECEIVED_FROM_SUPPLIER');
-    }
-
     setOpPaymentMethod('CASH');
     setOpPaidImmediate(0);
     setOpNotes('');
+    setFabModalType(type);
   };
 
-  const handleSaveNewOperation = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!activeShift || !newOpModalType) return;
+  // Ejecuta el guardado de cualquier operación (desde el modal FAB o desde los tabs de Proveedores/Clientes)
+  const executeSaveOperation = async (typeToSave: OperationType) => {
+    if (!activeShift) return;
 
     const product = state.products.find((p) => p.id === opProductId);
     const client = state.clients.find((c) => c.id === opClientId);
     const supplier = state.suppliers.find((s) => s.id === opSupplierId);
 
-    let actualType: OperationType = newOpModalType;
+    let actualType: OperationType = typeToSave;
     let payload: RouteOperation['payload'] = {
       totalAmount: 0,
       paymentMethod: opPaymentMethod,
       notes: opNotes,
     };
 
-    if (newOpModalType === 'SALE') {
+    if (typeToSave === 'SALE') {
       payload = {
         productId: product?.id,
         productName: product?.name,
@@ -446,7 +463,7 @@ export function App() {
             : opQuantity * opUnitPrice,
         notes: opNotes || 'Venta en ruta',
       };
-    } else if (newOpModalType === 'PURCHASE') {
+    } else if (typeToSave === 'PURCHASE') {
       payload = {
         productId: product?.id,
         productName: product?.name,
@@ -459,8 +476,8 @@ export function App() {
         notes: opNotes || 'Compra a proveedor',
       };
     } else if (
-      newOpModalType === 'COLLECTION_PAST_DEBT' ||
-      newOpModalType === 'COLLECTION_CURRENT'
+      typeToSave === 'COLLECTION_PAST_DEBT' ||
+      typeToSave === 'COLLECTION_CURRENT'
     ) {
       actualType =
         opCollectionKind === 'CURRENT'
@@ -483,7 +500,7 @@ export function App() {
             ? 'Abono a venta fiada de hoy'
             : 'Abono a deuda de días anteriores'),
       };
-    } else if (newOpModalType === 'EXPENSE') {
+    } else if (typeToSave === 'EXPENSE') {
       payload = {
         expenseCategory: opExpenseCategory,
         description: opNotes || 'Gasto operativo de ruta',
@@ -491,7 +508,7 @@ export function App() {
         paymentMethod: opPaymentMethod,
         notes: opNotes,
       };
-    } else if (newOpModalType === 'SUPPLIER_RETURN') {
+    } else if (typeToSave === 'SUPPLIER_RETURN') {
       const unitCost = product?.defaultCostPrice ?? 28000;
       payload = {
         productId: product?.id,
@@ -510,7 +527,7 @@ export function App() {
             : 0,
         notes: opNotes || 'Devolución de fruta al proveedor',
       };
-    } else if (newOpModalType === 'CRATE_MOVEMENT') {
+    } else if (typeToSave === 'CRATE_MOVEMENT') {
       const isSupplierMove =
         opCrateType === 'RECEIVED_FROM_SUPPLIER' ||
         opCrateType === 'RETURNED_TO_SUPPLIER';
@@ -539,9 +556,6 @@ export function App() {
     });
 
     if (res.ok) {
-      // DEUDA AUTOMÁTICA DE CANASTILLAS:
-      // Si es una venta y el producto deja canastillas al cliente, generar automáticamente
-      // el movimiento de préstamo de canastillas al cliente hasta que las devuelva.
       let autoCrateMsg = '';
       if (
         actualType === 'SALE' &&
@@ -566,7 +580,8 @@ export function App() {
         autoCrateMsg = ` (+${opAutoCratesCount} canastillas cargadas automáticamente a ${client.name})`;
       }
 
-      setNewOpModalType(null);
+      setFabModalType(null);
+      setOpNotes('');
       const updatedPreview = coreService.getShiftReconciliationPreview(
         activeShift.id
       );
@@ -724,14 +739,12 @@ export function App() {
     }
   };
 
-  // Opciones formateadas para el selector con buscador (soporta 70+ clientes y 10+ productos)
   const productPickerOptions = useMemo(
     () =>
       state.products.map((p) => {
-        const price =
-          newOpModalType === 'PURCHASE'
-            ? p.defaultCostPrice
-            : p.defaultSalePrice;
+        const isPurchase =
+          activeTab === 'SUPPLIERS' && supplierSubTab === 'PURCHASE_FORM';
+        const price = isPurchase ? p.defaultCostPrice : p.defaultSalePrice;
         return {
           id: p.id,
           label: p.name,
@@ -740,7 +753,7 @@ export function App() {
           badgeTone: 'green' as const,
         };
       }),
-    [state.products, newOpModalType]
+    [state.products, activeTab, supplierSubTab]
   );
 
   const clientPickerOptions = useMemo(
@@ -768,12 +781,14 @@ export function App() {
         badgeText:
           s.creditBalanceInFavor > 0
             ? `Saldo favor: ${formatCOP(s.creditBalanceInFavor)}`
-            : 'Proveedor activo',
+            : 'Activo',
         badgeTone:
           s.creditBalanceInFavor > 0 ? ('green' as const) : ('slate' as const),
       })),
     [state.suppliers]
   );
+
+  const PAGE_SIZE = 5;
 
   // Panel lateral derecho en pantallas grandes (Desktop)
   const rightSummaryPanel =
@@ -791,7 +806,7 @@ export function App() {
           </span>
         </div>
 
-        <div className="space-y-2.5 text-sm">
+        <div className="space-y-2 text-sm">
           <div className="flex justify-between items-center py-1.5 border-b border-slate-100">
             <span className="text-slate-600">Ventas del día:</span>
             <strong className="text-base font-bold text-slate-900 tabular-nums">
@@ -848,8 +863,8 @@ export function App() {
       onOpenConnectionSheet={() => setConnectionSheetOpen(true)}
       onOpenAuthSheet={() => setAuthSheetOpen(true)}
       onOpenNotificationsModal={() => setNotificationsModalOpen(true)}
-      onOpenQuickSale={() => openOperationModal('SALE', 'FAB')}
-      onOpenQuickExpense={() => openOperationModal('EXPENSE', 'FAB')}
+      onOpenQuickSale={() => openFabModal('SALE')}
+      onOpenQuickExpense={() => openFabModal('EXPENSE')}
       pendingSyncCount={pendingSyncCount}
       pendingAuthCount={pendingAuthRequests.length}
       activeUser={currentUser}
@@ -862,7 +877,6 @@ export function App() {
       firebaseProjectId={coreService.firebaseAdapter.getProjectId()}
       rightPanel={rightSummaryPanel}
     >
-      {/* Avisos de estado claros y elegantes */}
       {feedback && (
         <div
           role="alert"
@@ -906,11 +920,13 @@ export function App() {
       ) : (
         <>
           {/* ====================================================================
-              VISTA 1: RUTA DE HOY (Indicadores del día + Botón Cerrar Día + Historial)
+              VISTA 1: RUTA DE HOY
+              1. Tarjeta Superior: Jornada + Botón Cerrar Día + 4 KPIs
+              2. Debajo: UNA SOLA SECCIÓN CON 4 TABS y tablas de 2 columnas con paginación
              ==================================================================== */}
           {activeTab === 'OPERATE' && activeShift && reconciliation && (
             <main className="space-y-4">
-              {/* Tarjeta principal de la Jornada + Botón directo para Cerrar Día */}
+              {/* Tarjeta principal de la Jornada + Botón Cerrar Día + 4 KPIs */}
               <section className="bg-white border border-slate-200 rounded-2xl p-4 sm:p-5 shadow-xs space-y-4">
                 <div className="flex items-start justify-between gap-3 flex-wrap">
                   <div className="flex items-center gap-3 min-w-0">
@@ -943,7 +959,6 @@ export function App() {
                     </div>
                   </div>
 
-                  {/* Botón prominente para Cerrar Día en Modal */}
                   <button
                     type="button"
                     onClick={() => setClosureModalOpen(true)}
@@ -962,7 +977,6 @@ export function App() {
                   </button>
                 </div>
 
-                {/* Indicadores clave del día (4 tarjetas claras) */}
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 pt-2 border-t border-slate-100">
                   <div className="p-3 rounded-xl bg-green-50/90 border border-green-200">
                     <span className="block text-xs font-semibold text-green-900">
@@ -1005,168 +1019,385 @@ export function App() {
                 </div>
               </section>
 
-              {/* Inventario actual en el camión y Canastillas */}
-              <section className="bg-white border border-slate-200 rounded-2xl p-4 sm:p-5 shadow-xs space-y-3">
-                <div className="flex items-center justify-between gap-2 flex-wrap">
-                  <div className="flex items-center gap-2">
-                    <Package className="w-5 h-5 text-green-700" />
-                    <h3 className="text-base font-bold text-slate-900">
-                      Inventario disponible en el camión
-                    </h3>
-                  </div>
-                  <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-slate-100 text-slate-700 border border-slate-200 tabular-nums">
-                    Canastillas en camión:{' '}
-                    {reconciliation.crates.finalCratesInVehicle} · En clientes:{' '}
-                    {reconciliation.crates.totalCratesHeldByClients}
-                  </span>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-                  {reconciliation.inventory.items.map((item) => (
-                    <div
-                      key={item.productId}
-                      className="p-3 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-between gap-2"
+              {/* UNA SOLA SECCIÓN UNIFICADA CON 4 TABS */}
+              <section className="bg-white border border-slate-200 rounded-2xl p-4 sm:p-5 shadow-xs space-y-4 min-h-[380px]">
+                {/* Barra de 4 Tabs */}
+                <div className="grid grid-cols-4 gap-1 p-1 rounded-xl bg-slate-100 border border-slate-200">
+                  {(
+                    [
+                      { id: 'INVENTORY', label: 'Inventario' },
+                      { id: 'CRATES', label: 'Canastillas' },
+                      {
+                        id: 'OPERATIONS',
+                        label: `Registros (${shiftOperations.length})`,
+                      },
+                      { id: 'FINANCE', label: 'Arqueo' },
+                    ] as const
+                  ).map((tab) => (
+                    <button
+                      key={tab.id}
+                      type="button"
+                      onClick={() => setOperateSubTab(tab.id)}
+                      className={`min-h-[40px] px-1.5 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer truncate ${
+                        operateSubTab === tab.id
+                          ? 'bg-white text-green-800 shadow-2xs'
+                          : 'text-slate-600 hover:text-slate-900'
+                      }`}
                     >
-                      <div className="min-w-0">
-                        <div className="text-sm font-bold text-slate-900 truncate">
-                          {item.productName}
-                        </div>
-                        <div className="text-xs text-slate-500">
-                          Inic: {item.initialInventory} · Comp:{' '}
-                          {item.purchasesQty} · Vend: {item.soldQty}
-                        </div>
-                      </div>
-                      <div className="text-right shrink-0">
-                        <strong className="text-lg font-extrabold text-green-800 tabular-nums">
-                          {item.expectedFinalInventory}
-                        </strong>
-                        <span className="block text-[11px] font-semibold text-slate-500">
-                          {item.unit}
-                        </span>
-                      </div>
-                    </div>
+                      {tab.label}
+                    </button>
                   ))}
                 </div>
-              </section>
 
-              {/* Historial de Operaciones de la Jornada */}
-              <section className="bg-white border border-slate-200 rounded-2xl p-4 sm:p-5 shadow-xs space-y-3.5">
-                <div className="flex items-center justify-between gap-2 flex-wrap">
-                  <div>
-                    <h3 className="text-base sm:text-lg font-bold text-slate-900">
-                      Registros de hoy ({shiftOperations.length})
-                    </h3>
-                    <p className="text-xs text-slate-500">
-                      Plazo de edición directa:{' '}
-                      <strong>{activeShift.editWindowMinutes} min</strong> desde cada registro
-                    </p>
+                {/* TAB 1: INVENTARIO EN CAMIÓN (Tabla 2 columnas) */}
+                {operateSubTab === 'INVENTORY' && (
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-sm sm:text-base font-bold text-slate-900 flex items-center gap-2">
+                        <Package className="w-4 h-4 text-green-700" />
+                        <span>Inventario disponible en el camión</span>
+                      </h3>
+                    </div>
+
+                    <div className="overflow-hidden rounded-xl border border-slate-200">
+                      <table className="w-full text-left border-collapse">
+                        <thead>
+                          <tr className="bg-slate-50 border-b border-slate-200 text-xs font-bold text-slate-600">
+                            <th className="py-2.5 px-3">
+                              Producto y Movimientos
+                            </th>
+                            <th className="py-2.5 px-3 text-right">
+                              Disponible
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-200 text-sm">
+                          {reconciliation.inventory.items.map((item) => (
+                            <tr key={item.productId} className="bg-white">
+                              <td className="py-3 px-3">
+                                <div className="font-bold text-slate-900">
+                                  {item.productName}
+                                </div>
+                                <div className="text-xs text-slate-500">
+                                  Inic: {item.initialInventory} · Comp:{' '}
+                                  {item.purchasesQty} · Vend: {item.soldQty}
+                                </div>
+                              </td>
+                              <td className="py-3 px-3 text-right align-middle">
+                                <span className="inline-block px-2.5 py-1 rounded-lg bg-green-50 text-green-800 border border-green-200 font-extrabold tabular-nums">
+                                  {item.expectedFinalInventory} {item.unit}
+                                </span>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
                   </div>
-                </div>
+                )}
 
-                {shiftOperations.length === 0 ? (
-                  <p className="text-sm text-slate-500 py-4 text-center">
-                    Aún no hay operaciones registradas hoy. Usa el botón flotante{' '}
-                    <strong>"+ Anotar Venta"</strong> para empezar.
-                  </p>
-                ) : (
-                  <div className="space-y-2.5">
-                    {shiftOperations.map((op) => {
-                      const win = coreService.timeEngine.isWithinEditWindow(
-                        op,
-                        activeShift.editWindowMinutes
-                      );
-                      const pendingReq = state.authorizations.find(
-                        (a) =>
-                          a.operationId === op.id && a.status === 'PENDING'
-                      );
-                      const approvedReq = state.authorizations.find(
-                        (a) =>
-                          a.operationId === op.id &&
-                          a.status === 'APPROVED' &&
-                          a.approvedOperationVersion === op.version
-                      );
+                {/* TAB 2: BALANCE DE CANASTILLAS (Tabla 2 columnas) */}
+                {operateSubTab === 'CRATES' && (
+                  <div className="space-y-3">
+                    <h3 className="text-sm sm:text-base font-bold text-slate-900 flex items-center gap-2">
+                      <Boxes className="w-4 h-4 text-green-700" />
+                      <span>Control de Canastillas en Ruta</span>
+                    </h3>
 
-                      return (
-                        <div
-                          key={op.id}
-                          className="p-3.5 rounded-xl border border-slate-200 bg-slate-50/60 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
-                        >
-                          <div className="space-y-1 min-w-0">
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <span className="text-xs font-extrabold uppercase px-2 py-0.5 rounded-md bg-white border border-slate-200 text-slate-800">
-                                {getOperationTypeLabel(op.type)}
-                              </span>
-                              {win.withinWindow ? (
-                                <span className="inline-flex items-center gap-1 text-xs font-semibold text-green-800 bg-green-50 px-2 py-0.5 rounded-full border border-green-200">
-                                  <Clock className="w-3 h-3" />
-                                  Editable ({win.remainingMinutesFormatted})
-                                </span>
-                              ) : approvedReq ? (
-                                <span className="inline-flex items-center gap-1 text-xs font-bold text-blue-800 bg-blue-50 px-2 py-0.5 rounded-full border border-blue-200">
-                                  <CheckCircle2 className="w-3 h-3" />
-                                  Autorizado por Dueño
-                                </span>
-                              ) : pendingReq ? (
-                                <span className="inline-flex items-center gap-1 text-xs font-bold text-amber-900 bg-amber-100 px-2 py-0.5 rounded-full border border-amber-300">
-                                  <Clock className="w-3 h-3" />
-                                  Esperando permiso del dueño
-                                </span>
-                              ) : (
-                                <span className="inline-flex items-center gap-1 text-xs font-medium text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full">
-                                  <Lock className="w-3 h-3" />
-                                  Plazo vencido
-                                </span>
-                              )}
-                            </div>
+                    <div className="overflow-hidden rounded-xl border border-slate-200">
+                      <table className="w-full text-left border-collapse">
+                        <thead>
+                          <tr className="bg-slate-50 border-b border-slate-200 text-xs font-bold text-slate-600">
+                            <th className="py-2.5 px-3">Concepto</th>
+                            <th className="py-2.5 px-3 text-right">
+                              Cantidad
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-200 text-sm">
+                          <tr>
+                            <td className="py-2.5 px-3 font-medium text-slate-700">
+                              Canastillas iniciales en camión
+                            </td>
+                            <td className="py-2.5 px-3 text-right font-bold tabular-nums">
+                              {reconciliation.crates.initialCratesAvailable}
+                            </td>
+                          </tr>
+                          <tr>
+                            <td className="py-2.5 px-3 font-medium text-slate-700">
+                              Recibidas hoy de proveedor
+                            </td>
+                            <td className="py-2.5 px-3 text-right font-bold text-green-700 tabular-nums">
+                              +{reconciliation.crates.receivedFromSupplier}
+                            </td>
+                          </tr>
+                          <tr>
+                            <td className="py-2.5 px-3 font-medium text-slate-700">
+                              Dejadas hoy a clientes (deuda automática)
+                            </td>
+                            <td className="py-2.5 px-3 text-right font-bold text-amber-700 tabular-nums">
+                              -{reconciliation.crates.deliveredToClients}
+                            </td>
+                          </tr>
+                          <tr>
+                            <td className="py-2.5 px-3 font-medium text-slate-700">
+                              Devueltas hoy por clientes
+                            </td>
+                            <td className="py-2.5 px-3 text-right font-bold text-blue-700 tabular-nums">
+                              +{reconciliation.crates.returnedByClients}
+                            </td>
+                          </tr>
+                          <tr className="bg-green-50/70">
+                            <td className="py-3 px-3 font-bold text-green-950">
+                              Disponibles en camión ahora
+                            </td>
+                            <td className="py-3 px-3 text-right font-extrabold text-green-800 text-base tabular-nums">
+                              {reconciliation.crates.finalCratesInVehicle}
+                            </td>
+                          </tr>
+                          <tr className="bg-amber-50/70">
+                            <td className="py-3 px-3 font-bold text-amber-950">
+                              Total adeudadas por clientes
+                            </td>
+                            <td className="py-3 px-3 text-right font-extrabold text-amber-800 text-base tabular-nums">
+                              {reconciliation.crates.totalCratesHeldByClients}
+                            </td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
 
-                            <div className="text-sm font-bold text-slate-900 truncate">
-                              {op.payload.productName ||
-                                op.payload.clientName ||
-                                op.payload.supplierName ||
-                                op.payload.description ||
-                                'Movimiento de ruta'}
-                              {op.payload.quantity
-                                ? ` · ${op.payload.quantity} und.`
-                                : ''}
-                            </div>
-                            {op.payload.notes && (
-                              <div className="text-xs text-slate-500 truncate">
-                                {op.payload.notes}
-                              </div>
-                            )}
-                          </div>
+                {/* TAB 3: REGISTROS DE HOY (Tabla 2 columnas con paginación) */}
+                {operateSubTab === 'OPERATIONS' && (
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <h3 className="text-sm sm:text-base font-bold text-slate-900">
+                        Operaciones de hoy ({shiftOperations.length})
+                      </h3>
+                      <span className="text-xs text-slate-500">
+                        Ventana edición:{' '}
+                        <strong>{activeShift.editWindowMinutes} min</strong>
+                      </span>
+                    </div>
 
-                          <div className="flex items-center justify-between sm:justify-end gap-3 shrink-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-200/70">
-                            <strong className="text-base sm:text-lg font-extrabold text-slate-900 tabular-nums">
-                              {formatCOP(op.payload.totalAmount)}
-                            </strong>
+                    {shiftOperations.length === 0 ? (
+                      <p className="text-sm text-slate-500 py-6 text-center">
+                        Aún no hay registros hoy. Toca el botón circular{' '}
+                        <strong>(+)</strong> para registrar una venta o gasto.
+                      </p>
+                    ) : (
+                      <>
+                        <div className="overflow-hidden rounded-xl border border-slate-200">
+                          <table className="w-full text-left border-collapse">
+                            <thead>
+                              <tr className="bg-slate-50 border-b border-slate-200 text-xs font-bold text-slate-600">
+                                <th className="py-2.5 px-3">
+                                  Datos del Registro
+                                </th>
+                                <th className="py-2.5 px-3 text-right">
+                                  Valor / Acción
+                                </th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-200 text-sm">
+                              {shiftOperations
+                                .slice(
+                                  (opsPage - 1) * PAGE_SIZE,
+                                  opsPage * PAGE_SIZE
+                                )
+                                .map((op) => {
+                                  const win =
+                                    coreService.timeEngine.isWithinEditWindow(
+                                      op,
+                                      activeShift.editWindowMinutes
+                                    );
+                                  const pendingReq = state.authorizations.find(
+                                    (a) =>
+                                      a.operationId === op.id &&
+                                      a.status === 'PENDING'
+                                  );
+                                  const approvedReq = state.authorizations.find(
+                                    (a) =>
+                                      a.operationId === op.id &&
+                                      a.status === 'APPROVED' &&
+                                      a.approvedOperationVersion === op.version
+                                  );
 
-                            {activeShift.status === 'OPEN' && (
-                              <button
-                                type="button"
-                                onClick={() => openEditOperationModal(op)}
-                                className={`min-h-[40px] px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer ${
-                                  approvedReq
-                                    ? 'bg-blue-600 hover:bg-blue-700 text-white'
-                                    : win.withinWindow
-                                    ? 'bg-white hover:bg-slate-100 text-slate-800 border border-slate-300'
-                                    : 'bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300'
-                                }`}
-                              >
-                                <Edit3 className="w-3.5 h-3.5" />
-                                <span>
-                                  {approvedReq
-                                    ? 'Aplicar cambio'
-                                    : win.withinWindow
-                                    ? 'Corregir'
-                                    : 'Pedir permiso'}
-                                </span>
-                              </button>
-                            )}
-                          </div>
+                                  return (
+                                    <tr key={op.id} className="bg-white">
+                                      <td className="py-2.5 px-3 align-middle">
+                                        <div className="flex items-center gap-1.5 flex-wrap mb-0.5">
+                                          <span className="text-[11px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-slate-100 text-slate-800">
+                                            {getOperationTypeLabel(op.type)}
+                                          </span>
+                                          {win.withinWindow ? (
+                                            <span className="text-[11px] font-bold text-green-800 bg-green-50 px-1.5 py-0.5 rounded border border-green-200">
+                                              {win.remainingMinutesFormatted}
+                                            </span>
+                                          ) : approvedReq ? (
+                                            <span className="text-[11px] font-bold text-blue-800 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200">
+                                              Autorizado
+                                            </span>
+                                          ) : pendingReq ? (
+                                            <span className="text-[11px] font-bold text-amber-900 bg-amber-100 px-1.5 py-0.5 rounded">
+                                              Pendiente
+                                            </span>
+                                          ) : (
+                                            <span className="text-[11px] text-slate-500">
+                                              Vencido
+                                            </span>
+                                          )}
+                                        </div>
+                                        <div className="font-bold text-slate-900 text-xs sm:text-sm">
+                                          {op.payload.productName ||
+                                            op.payload.clientName ||
+                                            op.payload.supplierName ||
+                                            op.payload.description ||
+                                            'Movimiento'}
+                                          {op.payload.quantity
+                                            ? ` (${op.payload.quantity} und.)`
+                                            : ''}
+                                        </div>
+                                        {op.payload.notes && (
+                                          <div className="text-xs text-slate-500 line-clamp-1">
+                                            {op.payload.notes}
+                                          </div>
+                                        )}
+                                      </td>
+
+                                      <td className="py-2.5 px-3 text-right align-middle space-y-1.5">
+                                        <div className="font-extrabold text-slate-900 tabular-nums">
+                                          {formatCOP(op.payload.totalAmount)}
+                                        </div>
+                                        {activeShift.status === 'OPEN' && (
+                                          <button
+                                            type="button"
+                                            onClick={() =>
+                                              openEditOperationModal(op)
+                                            }
+                                            className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold cursor-pointer ${
+                                              approvedReq
+                                                ? 'bg-blue-600 text-white'
+                                                : win.withinWindow
+                                                ? 'bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300'
+                                                : 'bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300'
+                                            }`}
+                                          >
+                                            <Edit3 className="w-3 h-3" />
+                                            <span>
+                                              {approvedReq
+                                                ? 'Aplicar'
+                                                : win.withinWindow
+                                                ? 'Editar'
+                                                : 'Permiso'}
+                                            </span>
+                                          </button>
+                                        )}
+                                      </td>
+                                    </tr>
+                                  );
+                                })}
+                            </tbody>
+                          </table>
                         </div>
-                      );
-                    })}
+
+                        <TablePagination
+                          currentPage={opsPage}
+                          totalItems={shiftOperations.length}
+                          pageSize={PAGE_SIZE}
+                          onPageChange={setOpsPage}
+                        />
+                      </>
+                    )}
+                  </div>
+                )}
+
+                {/* TAB 4: ARQUEO Y FINANZAS DEL DÍA (Tabla 2 columnas) */}
+                {operateSubTab === 'FINANCE' && (
+                  <div className="space-y-3">
+                    <h3 className="text-sm sm:text-base font-bold text-slate-900 flex items-center gap-2">
+                      <Wallet className="w-4 h-4 text-green-700" />
+                      <span>Utilidad Económica vs. Efectivo en Caja</span>
+                    </h3>
+
+                    <div className="overflow-hidden rounded-xl border border-slate-200">
+                      <table className="w-full text-left border-collapse">
+                        <thead>
+                          <tr className="bg-slate-50 border-b border-slate-200 text-xs font-bold text-slate-600">
+                            <th className="py-2.5 px-3">Concepto Financiero</th>
+                            <th className="py-2.5 px-3 text-right">Monto</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-200 text-sm">
+                          <tr>
+                            <td className="py-2.5 px-3 text-slate-700">
+                              Base inicial de efectivo
+                            </td>
+                            <td className="py-2.5 px-3 text-right font-bold tabular-nums">
+                              {formatCOP(activeShift.initialCash)}
+                            </td>
+                          </tr>
+                          <tr>
+                            <td className="py-2.5 px-3 text-slate-700">
+                              Recaudo efectivo ventas de hoy
+                            </td>
+                            <td className="py-2.5 px-3 text-right font-bold text-green-700 tabular-nums">
+                              +
+                              {formatCOP(
+                                reconciliation.financials
+                                  .collectedFromCurrentSalesCash
+                              )}
+                            </td>
+                          </tr>
+                          <tr>
+                            <td className="py-2.5 px-3 text-slate-700">
+                              Cobros deuda días anteriores
+                            </td>
+                            <td className="py-2.5 px-3 text-right font-bold text-blue-700 tabular-nums">
+                              +
+                              {formatCOP(
+                                reconciliation.financials.totalPastDebtCollected
+                              )}
+                            </td>
+                          </tr>
+                          <tr>
+                            <td className="py-2.5 px-3 text-slate-700">
+                              Compras y gastos pagados hoy
+                            </td>
+                            <td className="py-2.5 px-3 text-right font-bold text-red-700 tabular-nums">
+                              -
+                              {formatCOP(
+                                reconciliation.financials.totalPurchasesAmount +
+                                  reconciliation.financials
+                                    .totalExpensesAndPersonnel
+                              )}
+                            </td>
+                          </tr>
+                          <tr className="bg-green-50/80">
+                            <td className="py-3 px-3 font-bold text-green-950">
+                              Efectivo físico esperado en caja
+                            </td>
+                            <td className="py-3 px-3 text-right font-extrabold text-green-800 text-base tabular-nums">
+                              {formatCOP(
+                                reconciliation.financials.expectedCashInBox
+                              )}
+                            </td>
+                          </tr>
+                          <tr className="bg-blue-50/70">
+                            <td className="py-3 px-3 font-bold text-blue-950">
+                              Utilidad económica neta del día
+                            </td>
+                            <td className="py-3 px-3 text-right font-extrabold text-blue-800 text-base tabular-nums">
+                              {formatCOP(
+                                reconciliation.financials.economicNetProfit
+                              )}
+                            </td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
                   </div>
                 )}
               </section>
@@ -1174,434 +1405,760 @@ export function App() {
           )}
 
           {/* ====================================================================
-              VISTA 2: COMPRAS Y DEVOLUCIONES (Todo lo que se gestiona con el Proveedor)
+              VISTA 2: COMPRAS Y DEVOLUCIONES (PROVEEDORES)
+              Una sola sección con 4 Tabs + Tabla de Proveedores de 2 columnas con paginación
              ==================================================================== */}
           {activeTab === 'SUPPLIERS' && activeShift && (
             <main className="space-y-4">
-              <section className="bg-white border border-slate-200 rounded-2xl p-4 sm:p-5 shadow-xs space-y-4">
+              <section className="bg-white border border-slate-200 rounded-2xl p-4 sm:p-5 shadow-xs space-y-4 min-h-[440px]">
                 <div className="flex items-center gap-3">
-                  <div className="w-11 h-11 rounded-xl bg-green-50 text-green-700 border border-green-100 flex items-center justify-center shrink-0">
+                  <div className="w-10 h-10 rounded-xl bg-green-50 text-green-700 border border-green-100 flex items-center justify-center shrink-0">
                     <Truck className="w-5 h-5" />
                   </div>
                   <div>
-                    <h2 className="text-lg sm:text-xl font-bold text-slate-900">
-                      Compras y Devoluciones (Proveedores)
+                    <h2 className="text-base sm:text-lg font-bold text-slate-900">
+                      Gestión con Proveedores
                     </h2>
-                    <p className="text-xs sm:text-sm text-slate-600">
-                      Registra entradas de carga, devoluciones de fruta y canastillas con fincas proveedoras
+                    <p className="text-xs text-slate-600">
+                      Directorio de fincas, compras de fruta, devoluciones y canastillas en una sola sección
                     </p>
                   </div>
                 </div>
 
-                {/* Botones unificados de operación con Proveedor */}
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  <button
-                    type="button"
-                    disabled={activeShift.status === 'CLOSED'}
-                    onClick={() => openOperationModal('PURCHASE', 'SUPPLIER')}
-                    className="min-h-[60px] p-3.5 rounded-2xl bg-green-700 hover:bg-green-800 disabled:opacity-40 text-white font-bold text-left flex items-center gap-3 shadow-xs transition-colors cursor-pointer"
-                  >
-                    <div className="w-10 h-10 rounded-xl bg-white/15 flex items-center justify-center shrink-0">
-                      <ShoppingCart className="w-5 h-5" />
-                    </div>
-                    <div>
-                      <div className="text-base leading-tight">
-                        Comprar Fruta
-                      </div>
-                      <div className="text-xs text-green-100 font-normal">
-                        Entrada de carga al camión
-                      </div>
-                    </div>
-                  </button>
-
-                  <button
-                    type="button"
-                    disabled={activeShift.status === 'CLOSED'}
-                    onClick={() =>
-                      openOperationModal('SUPPLIER_RETURN', 'SUPPLIER')
-                    }
-                    className="min-h-[60px] p-3.5 rounded-2xl bg-amber-50 hover:bg-amber-100 disabled:opacity-40 text-amber-950 border border-amber-300 font-bold text-left flex items-center gap-3 transition-colors cursor-pointer"
-                  >
-                    <div className="w-10 h-10 rounded-xl bg-amber-600 text-white flex items-center justify-center shrink-0">
-                      <RotateCcw className="w-5 h-5" />
-                    </div>
-                    <div>
-                      <div className="text-base leading-tight">
-                        Devolver a Proveedor
-                      </div>
-                      <div className="text-xs text-amber-800 font-normal">
-                        Entregada vs. aceptada
-                      </div>
-                    </div>
-                  </button>
-
-                  <button
-                    type="button"
-                    disabled={activeShift.status === 'CLOSED'}
-                    onClick={() =>
-                      openOperationModal('CRATE_MOVEMENT', 'SUPPLIER', {
-                        crateMovementType: 'RECEIVED_FROM_SUPPLIER',
-                      })
-                    }
-                    className="min-h-[60px] p-3.5 rounded-2xl bg-slate-100 hover:bg-slate-200 disabled:opacity-40 text-slate-900 border border-slate-300 font-bold text-left flex items-center gap-3 transition-colors cursor-pointer"
-                  >
-                    <div className="w-10 h-10 rounded-xl bg-slate-800 text-white flex items-center justify-center shrink-0">
-                      <Boxes className="w-5 h-5" />
-                    </div>
-                    <div>
-                      <div className="text-base leading-tight">
-                        Canastillas Proveedor
-                      </div>
-                      <div className="text-xs text-slate-600 font-normal">
-                        Recibidas o devueltas a finca
-                      </div>
-                    </div>
-                  </button>
-                </div>
-              </section>
-
-              {/* Directorio de Proveedores y Saldos a Favor */}
-              <section className="bg-white border border-slate-200 rounded-2xl p-4 sm:p-5 shadow-xs space-y-3">
-                <h3 className="text-base font-bold text-slate-900">
-                  Proveedores registrados ({state.suppliers.length})
-                </h3>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {state.suppliers.map((sup) => (
-                    <div
-                      key={sup.id}
-                      className="p-4 rounded-xl border border-slate-200 bg-slate-50/70 space-y-3"
+                {/* 4 Tabs de Proveedor (Directorio, Comprar, Devolver, Canastillas) */}
+                <div className="grid grid-cols-4 gap-1 p-1 rounded-xl bg-slate-100 border border-slate-200">
+                  {(
+                    [
+                      { id: 'PROVIDERS_TABLE', label: 'Proveedores' },
+                      { id: 'PURCHASE_FORM', label: 'Comprar' },
+                      { id: 'RETURN_FORM', label: 'Devolver' },
+                      { id: 'CRATES_FORM', label: 'Canastillas' },
+                    ] as const
+                  ).map((t) => (
+                    <button
+                      key={t.id}
+                      type="button"
+                      onClick={() => setSupplierSubTab(t.id)}
+                      className={`min-h-[40px] px-1.5 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer truncate ${
+                        supplierSubTab === t.id
+                          ? 'bg-white text-green-800 shadow-2xs'
+                          : 'text-slate-600 hover:text-slate-900'
+                      }`}
                     >
-                      <div className="flex items-start justify-between gap-2">
-                        <div>
-                          <div className="font-bold text-base text-slate-900">
-                            {sup.name}
-                          </div>
-                          <div className="text-xs text-slate-500">
-                            Tel: {sup.phone}
-                          </div>
-                        </div>
-                        <span className="px-2.5 py-1 rounded-lg text-xs font-bold bg-green-50 text-green-800 border border-green-200 tabular-nums">
-                          Saldo a favor: {formatCOP(sup.creditBalanceInFavor)}
-                        </span>
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-2">
-                        <button
-                          type="button"
-                          disabled={activeShift.status === 'CLOSED'}
-                          onClick={() =>
-                            openOperationModal('PURCHASE', 'SUPPLIER', {
-                              preselectedSupplierId: sup.id,
-                            })
-                          }
-                          className="min-h-[42px] px-3 py-2 rounded-xl bg-green-700 hover:bg-green-800 text-white text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer"
-                        >
-                          <ShoppingCart className="w-3.5 h-3.5" />
-                          <span>Comprar</span>
-                        </button>
-                        <button
-                          type="button"
-                          disabled={activeShift.status === 'CLOSED'}
-                          onClick={() =>
-                            openOperationModal('SUPPLIER_RETURN', 'SUPPLIER', {
-                              preselectedSupplierId: sup.id,
-                            })
-                          }
-                          className="min-h-[42px] px-3 py-2 rounded-xl bg-white hover:bg-slate-100 text-slate-800 border border-slate-300 text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer"
-                        >
-                          <RotateCcw className="w-3.5 h-3.5" />
-                          <span>Devolver</span>
-                        </button>
-                      </div>
-                    </div>
+                      {t.label}
+                    </button>
                   ))}
                 </div>
-              </section>
 
-              {/* Historial de Compras y Devoluciones de Hoy */}
-              <section className="bg-white border border-slate-200 rounded-2xl p-4 sm:p-5 shadow-xs space-y-3">
-                <h3 className="text-base font-bold text-slate-900">
-                  Compras y devoluciones de hoy
-                </h3>
-                {shiftOperations.filter(
-                  (o) =>
-                    o.type === 'PURCHASE' ||
-                    o.type === 'SUPPLIER_RETURN' ||
-                    (o.type === 'CRATE_MOVEMENT' &&
-                      (o.payload.crateMovementType ===
-                        'RECEIVED_FROM_SUPPLIER' ||
-                        o.payload.crateMovementType ===
-                          'RETURNED_TO_SUPPLIER'))
-                ).length === 0 ? (
-                  <p className="text-sm text-slate-500 py-3">
-                    No se han registrado compras ni devoluciones a proveedores en esta jornada.
-                  </p>
-                ) : (
-                  <div className="space-y-2">
-                    {shiftOperations
-                      .filter(
-                        (o) =>
-                          o.type === 'PURCHASE' ||
-                          o.type === 'SUPPLIER_RETURN' ||
-                          (o.type === 'CRATE_MOVEMENT' &&
-                            (o.payload.crateMovementType ===
-                              'RECEIVED_FROM_SUPPLIER' ||
-                              o.payload.crateMovementType ===
-                                'RETURNED_TO_SUPPLIER'))
-                      )
-                      .map((op) => (
-                        <div
-                          key={op.id}
-                          className="p-3 rounded-xl border border-slate-200 bg-slate-50 flex items-center justify-between gap-2"
-                        >
-                          <div className="min-w-0">
-                            <span className="text-xs font-bold text-green-800">
-                              {getOperationTypeLabel(op.type)}
-                            </span>
-                            <div className="text-sm font-bold text-slate-900 truncate">
-                              {op.payload.supplierName || 'Proveedor'} ·{' '}
-                              {op.payload.productName || 'Canastillas'} (
-                              {op.payload.quantity} und.)
-                            </div>
-                          </div>
-                          <strong className="text-base font-extrabold text-slate-900 tabular-nums shrink-0">
-                            {formatCOP(op.payload.totalAmount)}
-                          </strong>
-                        </div>
-                      ))}
+                {/* TAB 1: TABLA DE 2 COLUMNAS DE PROVEEDORES REGISTRADOS CON PAGINACIÓN */}
+                {supplierSubTab === 'PROVIDERS_TABLE' && (
+                  <div className="space-y-3">
+                    <div className="relative">
+                      <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                      <input
+                        type="text"
+                        value={supplierSearchQuery}
+                        onChange={(e) => {
+                          setSupplierSearchQuery(e.target.value);
+                          setSuppliersPage(1);
+                        }}
+                        placeholder="Filtrar proveedor por nombre o teléfono..."
+                        className="w-full min-h-[42px] pl-9 pr-3 py-1.5 rounded-xl border border-slate-300 bg-slate-50 text-sm focus:bg-white focus:outline-none focus:ring-2 focus:ring-green-600"
+                      />
+                    </div>
+
+                    <div className="overflow-hidden rounded-xl border border-slate-200">
+                      <table className="w-full text-left border-collapse">
+                        <thead>
+                          <tr className="bg-slate-50 border-b border-slate-200 text-xs font-bold text-slate-600">
+                            <th className="py-2.5 px-3">
+                              Datos del Proveedor
+                            </th>
+                            <th className="py-2.5 px-3 text-right">Acciones</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-200 text-sm">
+                          {filteredSuppliers
+                            .slice(
+                              (suppliersPage - 1) * PAGE_SIZE,
+                              suppliersPage * PAGE_SIZE
+                            )
+                            .map((sup) => (
+                              <tr key={sup.id} className="bg-white">
+                                <td className="py-3 px-3 align-middle">
+                                  <div className="font-bold text-slate-900">
+                                    {sup.name}
+                                  </div>
+                                  <div className="text-xs text-slate-500">
+                                    Tel: {sup.phone}
+                                  </div>
+                                  <span className="inline-block mt-1 px-2 py-0.5 rounded text-[11px] font-bold bg-green-50 text-green-800 border border-green-200 tabular-nums">
+                                    Saldo a favor:{' '}
+                                    {formatCOP(sup.creditBalanceInFavor)}
+                                  </span>
+                                </td>
+                                <td className="py-3 px-3 text-right align-middle">
+                                  <div className="flex flex-col sm:flex-row justify-end gap-1.5">
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setOpSupplierId(sup.id);
+                                        const prod = state.products[0];
+                                        setOpProductId(prod.id);
+                                        setOpUnitPrice(prod.defaultCostPrice);
+                                        setSupplierSubTab('PURCHASE_FORM');
+                                      }}
+                                      className="px-3 py-1.5 rounded-lg bg-green-700 hover:bg-green-800 text-white text-xs font-bold cursor-pointer"
+                                    >
+                                      Comprar
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setOpSupplierId(sup.id);
+                                        setSupplierSubTab('RETURN_FORM');
+                                      }}
+                                      className="px-3 py-1.5 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 text-xs font-bold cursor-pointer"
+                                    >
+                                      Devolver
+                                    </button>
+                                  </div>
+                                </td>
+                              </tr>
+                            ))}
+                        </tbody>
+                      </table>
+                    </div>
+
+                    <TablePagination
+                      currentPage={suppliersPage}
+                      totalItems={filteredSuppliers.length}
+                      pageSize={PAGE_SIZE}
+                      onPageChange={setSuppliersPage}
+                    />
                   </div>
+                )}
+
+                {/* TAB 2: COMPRAR FRUTA A PROVEEDOR */}
+                {supplierSubTab === 'PURCHASE_FORM' && (
+                  <form
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      executeSaveOperation('PURCHASE');
+                    }}
+                    className="space-y-3"
+                  >
+                    <SearchableSelect
+                      label="Proveedor / Finca"
+                      options={supplierPickerOptions}
+                      value={opSupplierId}
+                      onChange={setOpSupplierId}
+                    />
+                    <SearchableSelect
+                      label="Producto comprado"
+                      options={productPickerOptions}
+                      value={opProductId}
+                      onChange={(pid) => {
+                        setOpProductId(pid);
+                        const p = state.products.find((x) => x.id === pid);
+                        if (p) setOpUnitPrice(p.defaultCostPrice);
+                      }}
+                    />
+
+                    <div className="grid grid-cols-12 gap-2.5 items-end">
+                      <div className="col-span-4">
+                        <label className="block text-xs font-bold text-slate-800 mb-1">
+                          Cantidad
+                        </label>
+                        <input
+                          type="number"
+                          inputMode="numeric"
+                          min={1}
+                          className="w-full min-h-[44px] px-3 py-1.5 rounded-xl border border-slate-300 bg-white text-base font-extrabold tabular-nums"
+                          value={opQuantity}
+                          onChange={(e) =>
+                            setOpQuantity(Number(e.target.value))
+                          }
+                        />
+                      </div>
+                      <div className="col-span-4">
+                        <label className="block text-xs font-bold text-slate-800 mb-1">
+                          Costo unit. ($)
+                        </label>
+                        <input
+                          type="number"
+                          inputMode="decimal"
+                          min={0}
+                          className="w-full min-h-[44px] px-3 py-1.5 rounded-xl border border-slate-300 bg-white text-base font-extrabold tabular-nums"
+                          value={opUnitPrice}
+                          onChange={(e) =>
+                            setOpUnitPrice(Number(e.target.value))
+                          }
+                        />
+                      </div>
+                      <div className="col-span-4 p-2 rounded-xl bg-green-50 border border-green-200 text-right">
+                        <span className="block text-[10px] font-bold uppercase text-green-900">
+                          Total Compra
+                        </span>
+                        <strong className="text-sm sm:text-base font-extrabold text-green-800 tabular-nums">
+                          {formatCOP(opQuantity * opUnitPrice)}
+                        </strong>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2">
+                      {(['CASH', 'TRANSFER'] as const).map((pm) => (
+                        <button
+                          key={pm}
+                          type="button"
+                          onClick={() => setOpPaymentMethod(pm)}
+                          className={`min-h-[42px] rounded-xl border text-xs font-bold cursor-pointer ${
+                            opPaymentMethod === pm
+                              ? 'bg-green-700 border-green-700 text-white'
+                              : 'bg-white border-slate-300 text-slate-800'
+                          }`}
+                        >
+                          {pm === 'CASH'
+                            ? 'Pago en Efectivo'
+                            : 'Pago por Transferencia'}
+                        </button>
+                      ))}
+                    </div>
+
+                    <button
+                      type="submit"
+                      disabled={activeShift.status === 'CLOSED'}
+                      className="w-full min-h-[48px] rounded-xl bg-green-700 hover:bg-green-800 text-white font-extrabold text-sm shadow-xs cursor-pointer"
+                    >
+                      Registrar Compra a Proveedor
+                    </button>
+                  </form>
+                )}
+
+                {/* TAB 3: DEVOLVER FRUTA A PROVEEDOR */}
+                {supplierSubTab === 'RETURN_FORM' && (
+                  <form
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      executeSaveOperation('SUPPLIER_RETURN');
+                    }}
+                    className="space-y-3"
+                  >
+                    <SearchableSelect
+                      label="Proveedor / Finca"
+                      options={supplierPickerOptions}
+                      value={opSupplierId}
+                      onChange={setOpSupplierId}
+                    />
+                    <SearchableSelect
+                      label="Producto a devolver"
+                      options={productPickerOptions}
+                      value={opProductId}
+                      onChange={setOpProductId}
+                    />
+
+                    <div className="grid grid-cols-2 gap-2.5">
+                      <div>
+                        <label className="block text-xs font-bold text-slate-800 mb-1">
+                          Cantidad entregada
+                        </label>
+                        <input
+                          type="number"
+                          inputMode="numeric"
+                          min={1}
+                          className="w-full min-h-[44px] px-3 py-1.5 rounded-xl border border-slate-300 bg-white text-base font-bold tabular-nums"
+                          value={opDeliveredQty}
+                          onChange={(e) =>
+                            setOpDeliveredQty(Number(e.target.value))
+                          }
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold text-slate-800 mb-1">
+                          Cantidad aceptada
+                        </label>
+                        <input
+                          type="number"
+                          inputMode="numeric"
+                          min={0}
+                          max={opDeliveredQty}
+                          className="w-full min-h-[44px] px-3 py-1.5 rounded-xl border border-slate-300 bg-white text-base font-bold tabular-nums"
+                          value={opAcceptedQty}
+                          onChange={(e) =>
+                            setOpAcceptedQty(Number(e.target.value))
+                          }
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-1.5">
+                      {(
+                        [
+                          { id: 'CREDIT_BALANCE', label: 'Saldo a favor' },
+                          { id: 'PENDING_COMPENSATION', label: 'Pendiente' },
+                          {
+                            id: 'CASH_REFUND_RECEIVED',
+                            label: 'Efectivo recibido',
+                          },
+                          { id: 'PRODUCT_EXCHANGE', label: 'Cambio fruta' },
+                        ] as const
+                      ).map((comp) => (
+                        <button
+                          key={comp.id}
+                          type="button"
+                          onClick={() => setOpCompensationType(comp.id)}
+                          className={`min-h-[40px] px-2.5 py-1.5 rounded-xl border text-xs font-bold cursor-pointer ${
+                            opCompensationType === comp.id
+                              ? 'bg-amber-50 border-amber-600 text-amber-950 ring-1 ring-amber-600'
+                              : 'bg-white border-slate-300 text-slate-800'
+                          }`}
+                        >
+                          {comp.label}
+                        </button>
+                      ))}
+                    </div>
+
+                    <button
+                      type="submit"
+                      disabled={activeShift.status === 'CLOSED'}
+                      className="w-full min-h-[48px] rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-extrabold text-sm shadow-xs cursor-pointer"
+                    >
+                      Registrar Devolución a Proveedor
+                    </button>
+                  </form>
+                )}
+
+                {/* TAB 4: CANASTILLAS CON PROVEEDOR */}
+                {supplierSubTab === 'CRATES_FORM' && (
+                  <form
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      executeSaveOperation('CRATE_MOVEMENT');
+                    }}
+                    className="space-y-3"
+                  >
+                    <SearchableSelect
+                      label="Proveedor / Finca"
+                      options={supplierPickerOptions}
+                      value={opSupplierId}
+                      onChange={setOpSupplierId}
+                    />
+
+                    <div className="grid grid-cols-2 gap-2">
+                      {(
+                        [
+                          {
+                            id: 'RECEIVED_FROM_SUPPLIER',
+                            label: 'Recibidas de proveedor',
+                          },
+                          {
+                            id: 'RETURNED_TO_SUPPLIER',
+                            label: 'Devueltas a proveedor',
+                          },
+                        ] as const
+                      ).map((mv) => (
+                        <button
+                          key={mv.id}
+                          type="button"
+                          onClick={() => setOpCrateType(mv.id)}
+                          className={`min-h-[44px] px-2.5 py-1.5 rounded-xl border text-xs font-bold cursor-pointer ${
+                            opCrateType === mv.id
+                              ? 'bg-green-50 border-green-600 text-green-950 ring-1 ring-green-600'
+                              : 'bg-white border-slate-300 text-slate-800'
+                          }`}
+                        >
+                          {mv.label}
+                        </button>
+                      ))}
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-slate-800 mb-1">
+                        Cantidad de canastillas
+                      </label>
+                      <input
+                        type="number"
+                        inputMode="numeric"
+                        min={1}
+                        className="w-full min-h-[44px] px-3 py-1.5 rounded-xl border border-slate-300 bg-white text-base font-bold tabular-nums"
+                        value={opQuantity}
+                        onChange={(e) => setOpQuantity(Number(e.target.value))}
+                      />
+                    </div>
+
+                    <button
+                      type="submit"
+                      disabled={activeShift.status === 'CLOSED'}
+                      className="w-full min-h-[48px] rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-extrabold text-sm cursor-pointer"
+                    >
+                      Guardar Movimiento de Canastillas
+                    </button>
+                  </form>
                 )}
               </section>
             </main>
           )}
 
           {/* ====================================================================
-              VISTA 3: COBROS Y DEUDAS (Todo lo que se gestiona con el Cliente + Canastillas automáticas)
+              VISTA 3: COBROS Y DEUDAS (CLIENTES)
+              Una sola sección con 3 Tabs + Tabla de 2 columnas con filtro y paginación
              ==================================================================== */}
           {activeTab === 'CLIENTS' && activeShift && reconciliation && (
             <main className="space-y-4">
-              {/* Cabecera y resumen de cartera de dinero + deuda automática de canastillas */}
-              <section className="bg-white border border-slate-200 rounded-2xl p-4 sm:p-5 shadow-xs space-y-4">
-                <div className="flex items-start justify-between gap-3 flex-wrap">
-                  <div className="flex items-center gap-3">
-                    <div className="w-11 h-11 rounded-xl bg-blue-50 text-blue-700 border border-blue-100 flex items-center justify-center shrink-0">
+              <section className="bg-white border border-slate-200 rounded-2xl p-4 sm:p-5 shadow-xs space-y-4 min-h-[460px]">
+                <div className="flex items-center justify-between gap-2 flex-wrap">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-700 border border-blue-100 flex items-center justify-center shrink-0">
                       <Users className="w-5 h-5" />
                     </div>
                     <div>
-                      <h2 className="text-lg sm:text-xl font-bold text-slate-900">
+                      <h2 className="text-base sm:text-lg font-bold text-slate-900">
                         Cobros y Deudas de Clientes
                       </h2>
-                      <p className="text-xs sm:text-sm text-slate-600">
-                        Las ventas en canastilla cargan automáticamente la deuda del envase al cliente hasta que la devuelva
+                      <p className="text-xs text-slate-600">
+                        Cartera total:{' '}
+                        <strong>
+                          {formatCOP(
+                            reconciliation.financials
+                              .totalCombinedPortfolioPending
+                          )}
+                        </strong>{' '}
+                        · Envases en clientes:{' '}
+                        <strong>
+                          {reconciliation.crates.totalCratesHeldByClients}
+                        </strong>
                       </p>
                     </div>
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
-                  <div className="p-3 rounded-xl bg-amber-50 border border-amber-200">
-                    <span className="block text-xs font-semibold text-amber-900">
-                      Total Cartera por Cobrar
-                    </span>
-                    <strong className="text-lg sm:text-xl font-extrabold text-amber-900 tabular-nums">
-                      {formatCOP(
-                        reconciliation.financials.totalCombinedPortfolioPending
-                      )}
-                    </strong>
-                  </div>
-
-                  <div className="p-3 rounded-xl bg-blue-50 border border-blue-200">
-                    <span className="block text-xs font-semibold text-blue-900">
-                      Cobrado Hoy (Cartera)
-                    </span>
-                    <strong className="text-lg sm:text-xl font-extrabold text-blue-900 tabular-nums">
-                      {formatCOP(
-                        reconciliation.financials.totalPastDebtCollected
-                      )}
-                    </strong>
-                  </div>
-
-                  <div className="col-span-2 sm:col-span-1 p-3 rounded-xl bg-slate-100 border border-slate-200">
-                    <span className="block text-xs font-semibold text-slate-700">
-                      Canastillas en Clientes
-                    </span>
-                    <strong className="text-lg sm:text-xl font-extrabold text-slate-900 tabular-nums">
-                      {reconciliation.crates.totalCratesHeldByClients} canastillas
-                    </strong>
-                  </div>
-                </div>
-
-                {/* Botones generales rápidos para Cliente */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                  <button
-                    type="button"
-                    disabled={activeShift.status === 'CLOSED'}
-                    onClick={() =>
-                      openOperationModal('COLLECTION_PAST_DEBT', 'CLIENT')
-                    }
-                    className="min-h-[52px] px-4 py-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-sm flex items-center justify-center gap-2 shadow-2xs cursor-pointer"
-                  >
-                    <DollarSign className="w-5 h-5" />
-                    <span>Cobrar Fiado / Abono de Cliente</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    disabled={activeShift.status === 'CLOSED'}
-                    onClick={() =>
-                      openOperationModal('CRATE_MOVEMENT', 'CLIENT', {
-                        crateMovementType: 'RETURNED_BY_CLIENT',
-                      })
-                    }
-                    className="min-h-[52px] px-4 py-3 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-sm flex items-center justify-center gap-2 shadow-2xs cursor-pointer"
-                  >
-                    <Boxes className="w-5 h-5" />
-                    <span>Recibir Devolución de Canastillas</span>
-                  </button>
-                </div>
-              </section>
-
-              {/* Buscador y Filtros Rápidos para gestionar hasta 70+ clientes */}
-              <section className="bg-white border border-slate-200 rounded-2xl p-4 sm:p-5 shadow-xs space-y-3.5">
-                <div className="flex flex-col sm:flex-row gap-2.5">
-                  <div className="relative flex-1">
-                    <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-                    <input
-                      type="text"
-                      value={clientSearchQuery}
-                      onChange={(e) => setClientSearchQuery(e.target.value)}
-                      placeholder="Buscar entre los clientes por nombre o teléfono..."
-                      className="w-full min-h-[46px] pl-10 pr-4 py-2 rounded-xl border border-slate-300 bg-slate-50 text-sm text-slate-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-green-600"
-                    />
-                  </div>
-
-                  <div className="grid grid-cols-3 gap-1.5 shrink-0">
-                    {(
-                      [
-                        { id: 'ALL', label: 'Todos' },
-                        { id: 'WITH_MONEY_DEBT', label: 'Con Deuda $' },
-                        { id: 'WITH_CRATE_DEBT', label: 'Con Canastillas' },
-                      ] as const
-                    ).map((f) => (
-                      <button
-                        key={f.id}
-                        type="button"
-                        onClick={() => setClientFilterMode(f.id)}
-                        className={`min-h-[42px] px-2.5 py-1.5 rounded-xl text-xs font-bold transition-colors cursor-pointer ${
-                          clientFilterMode === f.id
-                            ? 'bg-green-700 text-white'
-                            : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
-                        }`}
-                      >
-                        {f.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Lista de Clientes con sus Deudas de Dinero y Deudas Automáticas de Canastillas */}
-                <div className="space-y-2.5">
-                  {filteredClientBalances.map((item) => (
-                    <div
-                      key={item.client.id}
-                      className="p-3.5 rounded-xl border border-slate-200 bg-slate-50/70 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                {/* 3 Tabs de Cliente */}
+                <div className="grid grid-cols-3 gap-1 p-1 rounded-xl bg-slate-100 border border-slate-200">
+                  {(
+                    [
+                      { id: 'PORTFOLIO_TABLE', label: 'Cartera Clientes' },
+                      { id: 'COLLECT_DEBT_TAB', label: 'Cobrar Fiado ($)' },
+                      {
+                        id: 'RETURN_CRATES_TAB',
+                        label: 'Devolver Canastillas',
+                      },
+                    ] as const
+                  ).map((t) => (
+                    <button
+                      key={t.id}
+                      type="button"
+                      onClick={() => {
+                        setClientSubTab(t.id);
+                        if (t.id === 'RETURN_CRATES_TAB') {
+                          setOpCrateType('RETURNED_BY_CLIENT');
+                        }
+                      }}
+                      className={`min-h-[40px] px-1.5 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer truncate ${
+                        clientSubTab === t.id
+                          ? 'bg-white text-blue-800 shadow-2xs'
+                          : 'text-slate-600 hover:text-slate-900'
+                      }`}
                     >
-                      <div className="space-y-1 min-w-0">
-                        <div className="font-bold text-base text-slate-900 truncate">
-                          {item.client.name}
-                        </div>
-                        <div className="text-xs text-slate-500">
-                          Tel: {item.client.phone}
-                        </div>
-                        <div className="flex items-center gap-2 flex-wrap pt-0.5">
-                          <span
-                            className={`text-xs font-bold px-2.5 py-0.5 rounded-lg border tabular-nums ${
-                              item.totalMoneyDebt > 0
-                                ? 'bg-amber-100 text-amber-900 border-amber-300'
-                                : 'bg-green-50 text-green-800 border-green-200'
-                            }`}
-                          >
-                            Deuda $: {formatCOP(item.totalMoneyDebt)}
-                          </span>
+                      {t.label}
+                    </button>
+                  ))}
+                </div>
 
-                          <span
-                            className={`text-xs font-bold px-2.5 py-0.5 rounded-lg border tabular-nums ${
-                              item.totalCratesOwed > 0
-                                ? 'bg-blue-100 text-blue-900 border-blue-300'
-                                : 'bg-slate-100 text-slate-600 border-slate-200'
-                            }`}
-                          >
-                            Debe {item.totalCratesOwed} canastillas
-                          </span>
-                        </div>
-                      </div>
+                {/* FORMULARIO INTEGRADO SI ESTÁ EN EL TAB DE COBRAR FIADO ($) */}
+                {clientSubTab === 'COLLECT_DEBT_TAB' && (
+                  <form
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      executeSaveOperation('COLLECTION_PAST_DEBT');
+                    }}
+                    className="p-3.5 rounded-xl bg-blue-50/50 border border-blue-200 space-y-3"
+                  >
+                    <SearchableSelect
+                      label="Cliente que realiza el pago"
+                      options={clientPickerOptions}
+                      value={opClientId}
+                      onChange={setOpClientId}
+                    />
 
-                      <div className="grid grid-cols-2 gap-2 shrink-0">
+                    <div className="grid grid-cols-2 gap-2">
+                      {(
+                        [
+                          { id: 'PAST', label: 'Deuda días anteriores' },
+                          { id: 'CURRENT', label: 'Abono fiado de hoy' },
+                        ] as const
+                      ).map((k) => (
                         <button
+                          key={k.id}
                           type="button"
-                          disabled={activeShift.status === 'CLOSED'}
-                          onClick={() =>
-                            openOperationModal(
-                              'COLLECTION_PAST_DEBT',
-                              'CLIENT',
-                              {
-                                preselectedClientId: item.client.id,
-                              }
-                            )
-                          }
-                          className="min-h-[42px] px-3 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer"
+                          onClick={() => setOpCollectionKind(k.id)}
+                          className={`min-h-[40px] rounded-xl border text-xs font-bold cursor-pointer ${
+                            opCollectionKind === k.id
+                              ? 'bg-blue-600 border-blue-600 text-white'
+                              : 'bg-white border-slate-300 text-slate-800'
+                          }`}
                         >
-                          <DollarSign className="w-3.5 h-3.5" />
-                          <span>Cobrar $</span>
+                          {k.label}
                         </button>
+                      ))}
+                    </div>
 
-                        <button
-                          type="button"
-                          disabled={activeShift.status === 'CLOSED'}
-                          onClick={() =>
-                            openOperationModal('CRATE_MOVEMENT', 'CLIENT', {
-                              preselectedClientId: item.client.id,
-                              crateMovementType: 'RETURNED_BY_CLIENT',
-                            })
+                    <div className="grid grid-cols-2 gap-2.5">
+                      <div>
+                        <label className="block text-xs font-bold text-slate-800 mb-1">
+                          Abono a capital ($)
+                        </label>
+                        <input
+                          type="number"
+                          inputMode="decimal"
+                          min={0}
+                          className="w-full min-h-[42px] px-3 py-1.5 rounded-xl border border-slate-300 bg-white text-base font-bold tabular-nums"
+                          value={opCollectionAmount}
+                          onChange={(e) =>
+                            setOpCollectionAmount(Number(e.target.value))
                           }
-                          className="min-h-[42px] px-3 py-2 rounded-xl bg-white hover:bg-slate-100 text-slate-800 border border-slate-300 text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer"
+                        />
+                      </div>
+                      {opCollectionKind === 'PAST' && (
+                        <div>
+                          <label className="block text-xs font-bold text-slate-800 mb-1">
+                            Interés pactado ($)
+                          </label>
+                          <input
+                            type="number"
+                            inputMode="decimal"
+                            min={0}
+                            className="w-full min-h-[42px] px-3 py-1.5 rounded-xl border border-slate-300 bg-white text-base font-bold tabular-nums"
+                            value={opCollectionInterest}
+                            onChange={(e) =>
+                              setOpCollectionInterest(Number(e.target.value))
+                            }
+                          />
+                        </div>
+                      )}
+                    </div>
+
+                    <button
+                      type="submit"
+                      disabled={activeShift.status === 'CLOSED'}
+                      className="w-full min-h-[46px] rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-extrabold text-sm cursor-pointer"
+                    >
+                      Guardar Cobro de Cliente
+                    </button>
+                  </form>
+                )}
+
+                {/* FORMULARIO INTEGRADO SI ESTÁ EN EL TAB DE DEVOLVER CANASTILLAS */}
+                {clientSubTab === 'RETURN_CRATES_TAB' && (
+                  <form
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      setOpCrateType('RETURNED_BY_CLIENT');
+                      executeSaveOperation('CRATE_MOVEMENT');
+                    }}
+                    className="p-3.5 rounded-xl bg-slate-100 border border-slate-200 space-y-3"
+                  >
+                    <SearchableSelect
+                      label="Cliente que devuelve las canastillas"
+                      options={clientPickerOptions}
+                      value={opClientId}
+                      onChange={setOpClientId}
+                    />
+
+                    <div className="grid grid-cols-12 gap-2.5 items-end">
+                      <div className="col-span-5">
+                        <label className="block text-xs font-bold text-slate-800 mb-1">
+                          Canastillas devueltas
+                        </label>
+                        <input
+                          type="number"
+                          inputMode="numeric"
+                          min={1}
+                          className="w-full min-h-[44px] px-3 py-1.5 rounded-xl border border-slate-300 bg-white text-base font-bold tabular-nums"
+                          value={opQuantity}
+                          onChange={(e) =>
+                            setOpQuantity(Number(e.target.value))
+                          }
+                        />
+                      </div>
+                      <div className="col-span-7">
+                        <button
+                          type="submit"
+                          disabled={activeShift.status === 'CLOSED'}
+                          className="w-full min-h-[44px] rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-extrabold text-xs sm:text-sm cursor-pointer"
                         >
-                          <Boxes className="w-3.5 h-3.5" />
-                          <span>Devolver Envase</span>
+                          Descontar Canastillas al Cliente
                         </button>
                       </div>
                     </div>
-                  ))}
+                  </form>
+                )}
+
+                {/* BUSCADOR Y FILTRO + TABLA DE 2 COLUMNAS CON PAGINACIÓN (Común para los 3 tabs de clientes) */}
+                <div className="space-y-3">
+                  <div className="flex flex-col sm:flex-row gap-2">
+                    <div className="relative flex-1">
+                      <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                      <input
+                        type="text"
+                        value={clientSearchQuery}
+                        onChange={(e) => {
+                          setClientSearchQuery(e.target.value);
+                          setClientsPage(1);
+                        }}
+                        placeholder="Filtrar cliente por nombre o teléfono..."
+                        className="w-full min-h-[40px] pl-9 pr-3 py-1.5 rounded-xl border border-slate-300 bg-slate-50 text-xs sm:text-sm focus:bg-white focus:outline-none focus:ring-2 focus:ring-green-600"
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-1 shrink-0">
+                      {(
+                        [
+                          { id: 'ALL', label: 'Todos' },
+                          { id: 'WITH_MONEY_DEBT', label: 'Con Deuda $' },
+                          { id: 'WITH_CRATE_DEBT', label: 'Con Envases' },
+                        ] as const
+                      ).map((f) => (
+                        <button
+                          key={f.id}
+                          type="button"
+                          onClick={() => {
+                            setClientFilterMode(f.id);
+                            setClientsPage(1);
+                          }}
+                          className={`min-h-[38px] px-2 py-1 rounded-lg text-xs font-bold cursor-pointer ${
+                            clientFilterMode === f.id
+                              ? 'bg-green-700 text-white'
+                              : 'bg-slate-100 text-slate-700'
+                          }`}
+                        >
+                          {f.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="overflow-hidden rounded-xl border border-slate-200">
+                    <table className="w-full text-left border-collapse">
+                      <thead>
+                        <tr className="bg-slate-50 border-b border-slate-200 text-xs font-bold text-slate-600">
+                          <th className="py-2.5 px-3">
+                            Cliente y Estado de Deuda
+                          </th>
+                          <th className="py-2.5 px-3 text-right">Acciones</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-200 text-sm">
+                        {filteredClientBalances
+                          .slice(
+                            (clientsPage - 1) * PAGE_SIZE,
+                            clientsPage * PAGE_SIZE
+                          )
+                          .map((item) => (
+                            <tr key={item.client.id} className="bg-white">
+                              <td className="py-2.5 px-3 align-middle">
+                                <div className="font-bold text-slate-900">
+                                  {item.client.name}
+                                </div>
+                                <div className="text-xs text-slate-500">
+                                  Tel: {item.client.phone}
+                                </div>
+                                <div className="flex items-center gap-1.5 flex-wrap mt-1">
+                                  <span
+                                    className={`text-[11px] font-bold px-2 py-0.5 rounded border tabular-nums ${
+                                      item.totalMoneyDebt > 0
+                                        ? 'bg-amber-100 text-amber-900 border-amber-300'
+                                        : 'bg-green-50 text-green-800 border-green-200'
+                                    }`}
+                                  >
+                                    Deuda: {formatCOP(item.totalMoneyDebt)}
+                                  </span>
+                                  <span
+                                    className={`text-[11px] font-bold px-2 py-0.5 rounded border tabular-nums ${
+                                      item.totalCratesOwed > 0
+                                        ? 'bg-blue-100 text-blue-900 border-blue-300'
+                                        : 'bg-slate-100 text-slate-600 border-slate-200'
+                                    }`}
+                                  >
+                                    Envases: {item.totalCratesOwed}
+                                  </span>
+                                </div>
+                              </td>
+                              <td className="py-2.5 px-3 text-right align-middle">
+                                <div className="flex flex-col sm:flex-row justify-end gap-1.5">
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setOpClientId(item.client.id);
+                                      setOpCollectionAmount(
+                                        item.remainingPastPrincipal ||
+                                          item.currentShiftCreditPending ||
+                                          50000
+                                      );
+                                      setOpCollectionInterest(
+                                        item.remainingPastInterest
+                                      );
+                                      setClientSubTab('COLLECT_DEBT_TAB');
+                                    }}
+                                    className="px-2.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold cursor-pointer"
+                                  >
+                                    Cobrar $
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setOpClientId(item.client.id);
+                                      setOpQuantity(
+                                        Math.max(1, item.totalCratesOwed)
+                                      );
+                                      setOpCrateType('RETURNED_BY_CLIENT');
+                                      setClientSubTab('RETURN_CRATES_TAB');
+                                    }}
+                                    className="px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 text-xs font-bold cursor-pointer"
+                                  >
+                                    Recibir Envase
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          ))}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  <TablePagination
+                    currentPage={clientsPage}
+                    totalItems={filteredClientBalances.length}
+                    pageSize={PAGE_SIZE}
+                    onPageChange={setClientsPage}
+                  />
                 </div>
               </section>
             </main>
           )}
 
           {/* ====================================================================
-              VISTA 4: PANEL DEL DUEÑO (Seccionado por Tabs + Botón Campanita + Botón Auditoría en Modal)
+              VISTA 4: PANEL DEL DUEÑO (Tabs + Tablas de 2 columnas con Paginación)
              ==================================================================== */}
           {activeTab === 'OWNER' && (
             <main className="space-y-4">
-              {/* Cabecera del Dueño con accesos directos al Modal de Campanita y al Modal de Auditoría */}
-              <section className="bg-white border border-slate-200 rounded-2xl p-4 sm:p-5 shadow-xs space-y-4">
+              <section className="bg-white border border-slate-200 rounded-2xl p-4 sm:p-5 shadow-xs space-y-4 min-h-[440px]">
                 <div className="flex items-start justify-between gap-3 flex-wrap">
                   <div>
-                    <h2 className="text-lg sm:text-xl font-bold text-slate-900">
-                      Administración del Dueño
+                    <h2 className="text-base sm:text-lg font-bold text-slate-900">
+                      Panel del Dueño
                     </h2>
-                    <p className="text-xs sm:text-sm text-slate-600">
-                      Configura políticas, auxiliares, autorizaciones y consulta la auditoría inmutable
+                    <p className="text-xs text-slate-600">
+                      Configuración de políticas, auxiliares con paginación y ajustes post-cierre
                     </p>
                   </div>
 
-                  {/* Botones de Modales del Dueño: Campanita de Autorizaciones y Auditoría por Tabs */}
-                  <div className="flex items-center gap-2 flex-wrap w-full sm:w-auto">
+                  <div className="flex items-center gap-2 w-full sm:w-auto">
                     <button
                       type="button"
                       onClick={() => setNotificationsModalOpen(true)}
-                      className="flex-1 sm:flex-initial min-h-[46px] px-3.5 py-2 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-950 border border-amber-300 font-bold text-xs sm:text-sm flex items-center justify-center gap-2 cursor-pointer"
+                      className="flex-1 sm:flex-initial min-h-[42px] px-3 py-1.5 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-950 border border-amber-300 font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer"
                     >
-                      <Bell className="w-4 h-4 text-amber-700 shrink-0" />
+                      <Bell className="w-4 h-4 text-amber-700" />
                       <span>
                         Autorizaciones ({pendingAuthRequests.length})
                       </span>
@@ -1610,28 +2167,28 @@ export function App() {
                     <button
                       type="button"
                       onClick={() => setAuditModalOpen(true)}
-                      className="flex-1 sm:flex-initial min-h-[46px] px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs sm:text-sm flex items-center justify-center gap-2 cursor-pointer"
+                      className="flex-1 sm:flex-initial min-h-[42px] px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer"
                     >
-                      <ShieldCheck className="w-4 h-4 shrink-0" />
+                      <ShieldCheck className="w-4 h-4" />
                       <span>Auditoría y Pruebas</span>
                     </button>
                   </div>
                 </div>
 
-                {/* Pestañas (Tabs) para organizar las opciones del Dueño */}
-                <div className="grid grid-cols-3 gap-1.5 p-1 rounded-xl bg-slate-100 border border-slate-200">
+                {/* 3 Tabs del Dueño */}
+                <div className="grid grid-cols-3 gap-1 p-1 rounded-xl bg-slate-100 border border-slate-200">
                   {(
                     [
                       { id: 'POLICIES', label: 'Políticas y Cierre' },
                       { id: 'HELPERS', label: 'Auxiliares' },
-                      { id: 'ADJUSTMENTS', label: 'Ajustes Post-Cierre' },
+                      { id: 'ADJUSTMENTS', label: 'Ajustes Cierres' },
                     ] as const
                   ).map((tab) => (
                     <button
                       key={tab.id}
                       type="button"
                       onClick={() => setOwnerSubTab(tab.id)}
-                      className={`min-h-[42px] px-2 py-1.5 rounded-lg text-xs sm:text-sm font-bold transition-colors cursor-pointer ${
+                      className={`min-h-[40px] px-2 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer truncate ${
                         ownerSubTab === tab.id
                           ? 'bg-white text-green-800 shadow-2xs'
                           : 'text-slate-600 hover:text-slate-900'
@@ -1641,340 +2198,655 @@ export function App() {
                     </button>
                   ))}
                 </div>
-              </section>
 
-              {/* TAB 1 DEL DUEÑO: POLÍTICAS DE EDICIÓN Y CIERRE */}
-              {ownerSubTab === 'POLICIES' && (
-                <section className="bg-white border border-slate-200 rounded-2xl p-4 sm:p-5 shadow-xs space-y-4">
-                  <div className="flex items-center gap-2.5">
-                    <Sliders className="w-5 h-5 text-green-700" />
-                    <div>
-                      <h3 className="text-base sm:text-lg font-bold text-slate-900">
-                        Tiempo permitido para editar operaciones
-                      </h3>
-                      <p className="text-xs sm:text-sm text-slate-600">
-                        El plazo se calcula individualmente desde la creación de cada operación
-                      </p>
+                {/* TAB 1: POLÍTICAS */}
+                {ownerSubTab === 'POLICIES' && (
+                  <div className="space-y-4">
+                    <div className="flex items-center gap-2">
+                      <Sliders className="w-4 h-4 text-green-700" />
+                      <span className="text-sm font-bold text-slate-900">
+                        Plazo individual para editar operaciones
+                      </span>
                     </div>
-                  </div>
 
-                  <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
-                    {state.config.allowedEditWindowOptions.map((mins) => {
-                      const selected =
-                        (activeShift?.editWindowMinutes ??
-                          state.config.editWindowMinutes) === mins;
-                      return (
-                        <button
-                          key={mins}
-                          type="button"
-                          onClick={async () => {
-                            const res =
-                              await coreService.configureEditWindowAndClosurePolicy(
-                                {
-                                  actorUserId: currentUser.id,
-                                  shiftId: activeShift?.id,
-                                  editWindowMinutes: mins,
-                                  allowResponsibleHelperClose:
-                                    activeShift?.allowResponsibleHelperClose ??
-                                    state.config
-                                      .allowResponsibleHelperCloseByDefault,
-                                }
-                              );
-                            setFeedback({
-                              type: res.ok ? 'success' : 'error',
-                              text: res.message,
-                            });
-                            refreshState();
-                          }}
-                          className={`min-h-[48px] px-3 py-2 rounded-xl font-bold text-sm tabular-nums transition-colors cursor-pointer ${
-                            selected
-                              ? 'bg-green-700 text-white shadow-2xs'
-                              : 'bg-slate-100 hover:bg-slate-200 text-slate-800'
-                          }`}
-                        >
-                          {mins === 0 ? '0 min' : `${mins} min`}
-                        </button>
-                      );
-                    })}
-                  </div>
-
-                  <label className="flex items-center gap-3.5 p-4 rounded-xl bg-slate-50 border border-slate-200 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      className="w-5 h-5 accent-green-700 rounded shrink-0"
-                      checked={
-                        activeShift?.allowResponsibleHelperClose ??
-                        state.config.allowResponsibleHelperCloseByDefault
-                      }
-                      onChange={async (e) => {
-                        const res =
-                          await coreService.configureEditWindowAndClosurePolicy(
-                            {
-                              actorUserId: currentUser.id,
-                              shiftId: activeShift?.id,
-                              editWindowMinutes:
-                                activeShift?.editWindowMinutes ??
-                                state.config.editWindowMinutes,
-                              allowResponsibleHelperClose: e.target.checked,
-                            }
-                          );
-                        setFeedback({
-                          type: res.ok ? 'success' : 'error',
-                          text: res.message,
-                        });
-                        refreshState();
-                      }}
-                    />
-                    <span className="text-sm font-semibold text-slate-800">
-                      Permitir que el auxiliar responsable asignado ejecute el cierre definitivo de la jornada
-                    </span>
-                  </label>
-                </section>
-              )}
-
-              {/* TAB 2 DEL DUEÑO: GESTIÓN DE AUXILIARES */}
-              {ownerSubTab === 'HELPERS' && (
-                <section className="bg-white border border-slate-200 rounded-2xl p-4 sm:p-5 shadow-xs space-y-4">
-                  <div className="flex items-center gap-2.5">
-                    <Users className="w-5 h-5 text-green-700" />
-                    <div>
-                      <h3 className="text-base sm:text-lg font-bold text-slate-900">
-                        Gestión de auxiliares de ruta
-                      </h3>
-                      <p className="text-xs sm:text-sm text-slate-600">
-                        Desactivar un auxiliar bloquea nuevas operaciones y conserva todo su historial
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="space-y-2.5">
-                    {state.users
-                      .filter((u) => u.role === 'HELPER')
-                      .map((helper) => (
-                        <div
-                          key={helper.id}
-                          className="p-3.5 rounded-xl border border-slate-200 flex items-center justify-between gap-3 flex-wrap"
-                        >
-                          <div>
-                            <div className="font-bold text-base text-slate-900">
-                              {helper.name}
-                            </div>
-                            <span
-                              className={`inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-0.5 rounded-full mt-1 ${
-                                helper.active
-                                  ? 'bg-green-50 text-green-800 border border-green-200'
-                                  : 'bg-red-50 text-red-800 border border-red-200'
-                              }`}
-                            >
-                              {helper.active
-                                ? 'Activo'
-                                : 'Desactivado (historial intacto)'}
-                            </span>
-                          </div>
-
+                    <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
+                      {state.config.allowedEditWindowOptions.map((mins) => {
+                        const selected =
+                          (activeShift?.editWindowMinutes ??
+                            state.config.editWindowMinutes) === mins;
+                        return (
                           <button
+                            key={mins}
                             type="button"
                             onClick={async () => {
                               const res =
-                                await coreService.setHelperActiveStatus({
-                                  actorUserId: currentUser.id,
-                                  targetHelperId: helper.id,
-                                  active: !helper.active,
-                                  reason: helper.active
-                                    ? 'Desactivación administrativa con conservación de historial'
-                                    : 'Reactivación autorizada por el dueño',
-                                });
+                                await coreService.configureEditWindowAndClosurePolicy(
+                                  {
+                                    actorUserId: currentUser.id,
+                                    shiftId: activeShift?.id,
+                                    editWindowMinutes: mins,
+                                    allowResponsibleHelperClose:
+                                      activeShift?.allowResponsibleHelperClose ??
+                                      state.config
+                                        .allowResponsibleHelperCloseByDefault,
+                                  }
+                                );
                               setFeedback({
                                 type: res.ok ? 'success' : 'error',
                                 text: res.message,
                               });
                               refreshState();
                             }}
-                            className={`min-h-[42px] px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition-colors cursor-pointer ${
-                              helper.active
-                                ? 'bg-red-50 hover:bg-red-100 text-red-800 border border-red-200'
-                                : 'bg-green-700 hover:bg-green-800 text-white'
+                            className={`min-h-[44px] px-3 py-2 rounded-xl font-bold text-xs sm:text-sm tabular-nums cursor-pointer ${
+                              selected
+                                ? 'bg-green-700 text-white shadow-2xs'
+                                : 'bg-slate-100 hover:bg-slate-200 text-slate-800'
                             }`}
                           >
-                            {helper.active
-                              ? 'Desactivar cuenta'
-                              : 'Activar cuenta'}
+                            {mins === 0 ? '0 min' : `${mins} min`}
                           </button>
-                        </div>
-                      ))}
+                        );
+                      })}
+                    </div>
+
+                    <label className="flex items-center gap-3 p-3.5 rounded-xl bg-slate-50 border border-slate-200 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        className="w-5 h-5 accent-green-700 rounded shrink-0"
+                        checked={
+                          activeShift?.allowResponsibleHelperClose ??
+                          state.config.allowResponsibleHelperCloseByDefault
+                        }
+                        onChange={async (e) => {
+                          const res =
+                            await coreService.configureEditWindowAndClosurePolicy(
+                              {
+                                actorUserId: currentUser.id,
+                                shiftId: activeShift?.id,
+                                editWindowMinutes:
+                                  activeShift?.editWindowMinutes ??
+                                  state.config.editWindowMinutes,
+                                allowResponsibleHelperClose: e.target.checked,
+                              }
+                            );
+                          setFeedback({
+                            type: res.ok ? 'success' : 'error',
+                            text: res.message,
+                          });
+                          refreshState();
+                        }}
+                      />
+                      <span className="text-xs sm:text-sm font-semibold text-slate-800">
+                        Permitir que el auxiliar responsable ejecute el cierre definitivo
+                      </span>
+                    </label>
                   </div>
+                )}
 
-                  <form
-                    onSubmit={async (e) => {
-                      e.preventDefault();
-                      const res = await coreService.createHelperAccount({
-                        actorUserId: currentUser.id,
-                        name: newHelperName,
-                        pin: newHelperPin,
-                      });
-                      if (res.ok) {
-                        setNewHelperName('');
-                        setFeedback({ type: 'success', text: res.message });
-                      } else {
-                        setFeedback({ type: 'error', text: res.message });
-                      }
-                      refreshState();
-                    }}
-                    className="pt-3 border-t border-slate-100 flex flex-col sm:flex-row gap-2.5"
-                  >
-                    <input
-                      type="text"
-                      placeholder="Nombre del nuevo auxiliar..."
-                      className="flex-1 min-h-[46px] px-3.5 py-2 rounded-xl border border-slate-300 bg-white text-sm sm:text-base text-slate-900 focus:outline-none focus:ring-2 focus:ring-green-600"
-                      value={newHelperName}
-                      onChange={(e) => setNewHelperName(e.target.value)}
-                    />
-                    <button
-                      type="submit"
-                      className="min-h-[46px] px-5 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-sm flex items-center justify-center gap-2 shrink-0 cursor-pointer"
-                    >
-                      <UserPlus className="w-4 h-4" />
-                      <span>Crear auxiliar</span>
-                    </button>
-                  </form>
-                </section>
-              )}
-
-              {/* TAB 3 DEL DUEÑO: AJUSTE POSTERIOR A JORNADA CERRADA */}
-              {ownerSubTab === 'ADJUSTMENTS' && (
-                <section className="bg-white border border-slate-200 rounded-2xl p-4 sm:p-5 shadow-xs space-y-4">
-                  <div>
-                    <h3 className="text-base sm:text-lg font-bold text-slate-900">
-                      Ajuste contable posterior a jornada cerrada
-                    </h3>
-                    <p className="text-xs sm:text-sm text-slate-600">
-                      Registra un ajuste separado y auditable sin modificar ni borrar el cierre original
-                    </p>
-                  </div>
-
-                  {state.closures.length === 0 ? (
-                    <p className="text-sm text-slate-500">
-                      Aún no hay jornadas cerradas para registrar ajustes posteriores.
-                    </p>
-                  ) : (
+                {/* TAB 2: AUXILIARES (Tabla de 2 columnas con paginación) */}
+                {ownerSubTab === 'HELPERS' && (
+                  <div className="space-y-3">
                     <form
                       onSubmit={async (e) => {
                         e.preventDefault();
-                        const targetClosure =
-                          adjClosureId || state.closures[0].closureId;
-                        const res =
-                          await coreService.createPostClosureAdjustment({
-                            actorUserId: currentUser.id,
-                            closureId: targetClosure,
-                            adjustmentType: 'FINANCIAL_CORRECTION',
-                            reason: adjReason,
-                            previousValueSummary: {
-                              nota: 'Cierre histórico inmutable',
-                            },
-                            correctedValueSummary: {
-                              deltaCaja: adjDeltaCash,
-                              deltaUtilidad: adjDeltaProfit,
-                            },
-                            monetaryDeltaCash: adjDeltaCash,
-                            monetaryDeltaProfit: adjDeltaProfit,
-                            monetaryDeltaPortfolio: 0,
-                          });
+                        const res = await coreService.createHelperAccount({
+                          actorUserId: currentUser.id,
+                          name: newHelperName,
+                          pin: newHelperPin,
+                        });
                         if (res.ok) {
-                          setAdjReason('');
+                          setNewHelperName('');
                           setFeedback({ type: 'success', text: res.message });
                         } else {
                           setFeedback({ type: 'error', text: res.message });
                         }
                         refreshState();
                       }}
-                      className="space-y-3"
+                      className="flex gap-2"
                     >
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        <div>
-                          <label className="block text-sm font-bold text-slate-700 mb-1.5">
-                            Cierre histórico de referencia
-                          </label>
-                          <div className="flex flex-col gap-1.5">
-                            {state.closures.map((c) => {
-                              const selected =
-                                (adjClosureId ||
-                                  state.closures[0].closureId) === c.closureId;
-                              return (
-                                <button
-                                  key={c.closureId}
-                                  type="button"
-                                  onClick={() => setAdjClosureId(c.closureId)}
-                                  className={`min-h-[44px] px-3 py-2 rounded-xl border text-left text-xs sm:text-sm font-bold flex items-center justify-between gap-2 cursor-pointer ${
-                                    selected
-                                      ? 'bg-green-50 border-green-600 text-green-950 ring-1 ring-green-600'
-                                      : 'bg-white border-slate-300 text-slate-800'
-                                  }`}
-                                >
-                                  <span className="truncate">
-                                    {c.closureId}
-                                  </span>
-                                  <span className="text-xs text-slate-500 shrink-0">
-                                    {c.operatingDate}
-                                  </span>
-                                </button>
-                              );
-                            })}
-                          </div>
-                        </div>
-
-                        <div>
-                          <label className="block text-sm font-bold text-slate-700 mb-1.5">
-                            Diferencia monetaria a ajustar ($)
-                          </label>
-                          <input
-                            type="number"
-                            inputMode="decimal"
-                            className="w-full min-h-[46px] px-3.5 py-2 rounded-xl border border-slate-300 bg-white text-base font-bold text-slate-900 tabular-nums"
-                            value={adjDeltaCash}
-                            onChange={(e) => {
-                              setAdjDeltaCash(Number(e.target.value));
-                              setAdjDeltaProfit(Number(e.target.value));
-                            }}
-                          />
-                        </div>
-                      </div>
-
-                      <div>
-                        <label className="block text-sm font-bold text-slate-700 mb-1.5">
-                          Motivo obligatorio del ajuste posterior
-                        </label>
-                        <input
-                          type="text"
-                          placeholder="Ej: Recibo de peaje reportado después del cierre"
-                          className="w-full min-h-[46px] px-3.5 py-2 rounded-xl border border-slate-300 bg-white text-sm sm:text-base text-slate-900"
-                          value={adjReason}
-                          onChange={(e) => setAdjReason(e.target.value)}
-                        />
-                      </div>
-
+                      <input
+                        type="text"
+                        placeholder="Nombre del nuevo auxiliar..."
+                        className="flex-1 min-h-[42px] px-3 py-1.5 rounded-xl border border-slate-300 bg-white text-sm"
+                        value={newHelperName}
+                        onChange={(e) => setNewHelperName(e.target.value)}
+                      />
                       <button
                         type="submit"
-                        className="w-full sm:w-auto min-h-[48px] px-5 py-2.5 rounded-xl bg-green-700 hover:bg-green-800 text-white font-bold text-sm cursor-pointer"
+                        className="min-h-[42px] px-4 py-1.5 rounded-xl bg-slate-900 text-white font-bold text-xs flex items-center gap-1.5 shrink-0 cursor-pointer"
                       >
-                        Registrar ajuste posterior auditable
+                        <UserPlus className="w-4 h-4" />
+                        <span>Crear</span>
                       </button>
                     </form>
-                  )}
-                </section>
-              )}
+
+                    {(() => {
+                      const helpersList = state.users.filter(
+                        (u) => u.role === 'HELPER'
+                      );
+                      return (
+                        <>
+                          <div className="overflow-hidden rounded-xl border border-slate-200">
+                            <table className="w-full text-left border-collapse">
+                              <thead>
+                                <tr className="bg-slate-50 border-b border-slate-200 text-xs font-bold text-slate-600">
+                                  <th className="py-2.5 px-3">
+                                    Auxiliar y Estado
+                                  </th>
+                                  <th className="py-2.5 px-3 text-right">
+                                    Acción
+                                  </th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-slate-200 text-sm">
+                                {helpersList
+                                  .slice(
+                                    (helpersPage - 1) * PAGE_SIZE,
+                                    helpersPage * PAGE_SIZE
+                                  )
+                                  .map((helper) => (
+                                    <tr key={helper.id} className="bg-white">
+                                      <td className="py-2.5 px-3 align-middle">
+                                        <div className="font-bold text-slate-900">
+                                          {helper.name}
+                                        </div>
+                                        <span
+                                          className={`inline-block mt-0.5 text-[11px] font-bold px-2 py-0.5 rounded-full ${
+                                            helper.active
+                                              ? 'bg-green-50 text-green-800 border border-green-200'
+                                              : 'bg-red-50 text-red-800 border border-red-200'
+                                          }`}
+                                        >
+                                          {helper.active
+                                            ? 'Activo'
+                                            : 'Desactivado (historial conservado)'}
+                                        </span>
+                                      </td>
+                                      <td className="py-2.5 px-3 text-right align-middle">
+                                        <button
+                                          type="button"
+                                          onClick={async () => {
+                                            const res =
+                                              await coreService.setHelperActiveStatus(
+                                                {
+                                                  actorUserId: currentUser.id,
+                                                  targetHelperId: helper.id,
+                                                  active: !helper.active,
+                                                  reason: helper.active
+                                                    ? 'Desactivación administrativa'
+                                                    : 'Reactivación autorizada',
+                                                }
+                                              );
+                                            setFeedback({
+                                              type: res.ok
+                                                ? 'success'
+                                                : 'error',
+                                              text: res.message,
+                                            });
+                                            refreshState();
+                                          }}
+                                          className={`px-3 py-1.5 rounded-lg text-xs font-bold cursor-pointer ${
+                                            helper.active
+                                              ? 'bg-red-50 text-red-800 border border-red-200'
+                                              : 'bg-green-700 text-white'
+                                          }`}
+                                        >
+                                          {helper.active
+                                            ? 'Desactivar'
+                                            : 'Activar'}
+                                        </button>
+                                      </td>
+                                    </tr>
+                                  ))}
+                              </tbody>
+                            </table>
+                          </div>
+
+                          <TablePagination
+                            currentPage={helpersPage}
+                            totalItems={helpersList.length}
+                            pageSize={PAGE_SIZE}
+                            onPageChange={setHelpersPage}
+                          />
+                        </>
+                      );
+                    })()}
+                  </div>
+                )}
+
+                {/* TAB 3: AJUSTES POST-CIERRE + TABLA PAGINADA DE CIERRES HISTÓRICOS */}
+                {ownerSubTab === 'ADJUSTMENTS' && (
+                  <div className="space-y-3">
+                    {state.closures.length === 0 ? (
+                      <p className="text-sm text-slate-500 py-4 text-center">
+                        Aún no hay jornadas cerradas para registrar ajustes posteriores.
+                      </p>
+                    ) : (
+                      <>
+                        <div className="overflow-hidden rounded-xl border border-slate-200">
+                          <table className="w-full text-left border-collapse">
+                            <thead>
+                              <tr className="bg-slate-50 border-b border-slate-200 text-xs font-bold text-slate-600">
+                                <th className="py-2 px-3">
+                                  Cierre Congelado
+                                </th>
+                                <th className="py-2 px-3 text-right">
+                                  Seleccionar
+                                </th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-200 text-xs sm:text-sm">
+                              {state.closures
+                                .slice(
+                                  (closuresPage - 1) * PAGE_SIZE,
+                                  closuresPage * PAGE_SIZE
+                                )
+                                .map((c) => {
+                                  const selected =
+                                    (adjClosureId ||
+                                      state.closures[0].closureId) ===
+                                    c.closureId;
+                                  return (
+                                    <tr key={c.closureId} className="bg-white">
+                                      <td className="py-2.5 px-3">
+                                        <div className="font-bold text-slate-900">
+                                          {c.closureId} ({c.operatingDate})
+                                        </div>
+                                        <div className="text-xs text-slate-500">
+                                          Efectivo contado:{' '}
+                                          {formatCOP(c.countedCash)}
+                                        </div>
+                                      </td>
+                                      <td className="py-2.5 px-3 text-right">
+                                        <button
+                                          type="button"
+                                          onClick={() =>
+                                            setAdjClosureId(c.closureId)
+                                          }
+                                          className={`px-2.5 py-1 rounded-lg text-xs font-bold cursor-pointer ${
+                                            selected
+                                              ? 'bg-green-700 text-white'
+                                              : 'bg-slate-100 text-slate-700'
+                                          }`}
+                                        >
+                                          {selected ? 'Activo' : 'Elegir'}
+                                        </button>
+                                      </td>
+                                    </tr>
+                                  );
+                                })}
+                            </tbody>
+                          </table>
+                        </div>
+
+                        <TablePagination
+                          currentPage={closuresPage}
+                          totalItems={state.closures.length}
+                          pageSize={PAGE_SIZE}
+                          onPageChange={setClosuresPage}
+                        />
+
+                        <form
+                          onSubmit={async (e) => {
+                            e.preventDefault();
+                            const targetClosure =
+                              adjClosureId || state.closures[0].closureId;
+                            const res =
+                              await coreService.createPostClosureAdjustment({
+                                actorUserId: currentUser.id,
+                                closureId: targetClosure,
+                                adjustmentType: 'FINANCIAL_CORRECTION',
+                                reason: adjReason,
+                                previousValueSummary: {
+                                  nota: 'Cierre histórico inmutable',
+                                },
+                                correctedValueSummary: {
+                                  deltaCaja: adjDeltaCash,
+                                  deltaUtilidad: adjDeltaProfit,
+                                },
+                                monetaryDeltaCash: adjDeltaCash,
+                                monetaryDeltaProfit: adjDeltaProfit,
+                                monetaryDeltaPortfolio: 0,
+                              });
+                            if (res.ok) {
+                              setAdjReason('');
+                              setFeedback({
+                                type: 'success',
+                                text: res.message,
+                              });
+                            } else {
+                              setFeedback({ type: 'error', text: res.message });
+                            }
+                            refreshState();
+                          }}
+                          className="p-3 rounded-xl bg-slate-50 border border-slate-200 space-y-2.5"
+                        >
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                            <div>
+                              <label className="block text-xs font-bold text-slate-700 mb-1">
+                                Diferencia a ajustar ($)
+                              </label>
+                              <input
+                                type="number"
+                                inputMode="decimal"
+                                className="w-full min-h-[40px] px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-sm font-bold tabular-nums"
+                                value={adjDeltaCash}
+                                onChange={(e) => {
+                                  setAdjDeltaCash(Number(e.target.value));
+                                  setAdjDeltaProfit(Number(e.target.value));
+                                }}
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-xs font-bold text-slate-700 mb-1">
+                                Motivo obligatorio
+                              </label>
+                              <input
+                                type="text"
+                                placeholder="Motivo del ajuste..."
+                                className="w-full min-h-[40px] px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-sm"
+                                value={adjReason}
+                                onChange={(e) => setAdjReason(e.target.value)}
+                              />
+                            </div>
+                          </div>
+                          <button
+                            type="submit"
+                            className="w-full min-h-[42px] rounded-xl bg-green-700 hover:bg-green-800 text-white font-bold text-xs sm:text-sm cursor-pointer"
+                          >
+                            Registrar Ajuste Posterior Auditable
+                          </button>
+                        </form>
+                      </>
+                    )}
+                  </div>
+                )}
+              </section>
             </main>
           )}
         </>
       )}
 
       {/* ====================================================================
-          MODAL 1 (CAMPANITA): NOTIFICACIONES Y AUTORIZACIONES DE EDICIÓN VENCIDA
+          MODAL CENTRADO 1 (BOTÓN CIRCULAR +): REGISTRAR VENTA O REGISTRAR GASTO
+         ==================================================================== */}
+      <BottomSheet
+        isOpen={Boolean(fabModalType)}
+        onClose={() => setFabModalType(null)}
+        title={
+          fabModalType === 'SALE'
+            ? 'Registrar Venta en Ruta'
+            : 'Registrar Gasto Operativo'
+        }
+        subtitle="Se guarda inmediatamente en la memoria del dispositivo"
+        icon={
+          fabModalType === 'SALE' ? (
+            <ShoppingCart className="w-5 h-5" />
+          ) : (
+            <Receipt className="w-5 h-5" />
+          )
+        }
+      >
+        {fabModalType === 'SALE' && (
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              executeSaveOperation('SALE');
+            }}
+            className="space-y-3"
+          >
+            <SearchableSelect
+              label="Producto"
+              options={productPickerOptions}
+              value={opProductId}
+              searchPlaceholder="Buscar producto..."
+              onChange={(prodId) => {
+                setOpProductId(prodId);
+                const prod = state.products.find((p) => p.id === prodId);
+                if (prod) {
+                  setOpUnitPrice(prod.defaultSalePrice);
+                  const usesCrates = prod.unit
+                    .toLowerCase()
+                    .includes('canastilla');
+                  setOpAutoLeaveCrates(usesCrates);
+                  setOpAutoCratesCount(opQuantity);
+                }
+              }}
+            />
+
+            <SearchableSelect
+              label="Cliente"
+              options={clientPickerOptions}
+              value={opClientId}
+              searchPlaceholder="Buscar cliente por nombre o teléfono..."
+              onChange={setOpClientId}
+            />
+
+            <div className="grid grid-cols-12 gap-2 items-end">
+              <div className="col-span-4">
+                <label className="block text-xs font-bold text-slate-800 mb-1">
+                  Cantidad
+                </label>
+                <input
+                  type="number"
+                  inputMode="numeric"
+                  min={1}
+                  className="w-full min-h-[44px] px-3 py-1.5 rounded-xl border border-slate-300 bg-white text-base font-extrabold tabular-nums"
+                  value={opQuantity}
+                  onChange={(e) => {
+                    const q = Number(e.target.value);
+                    setOpQuantity(q);
+                    setOpAutoCratesCount(q);
+                  }}
+                />
+              </div>
+              <div className="col-span-4">
+                <label className="block text-xs font-bold text-slate-800 mb-1">
+                  Unitario ($)
+                </label>
+                <input
+                  type="number"
+                  inputMode="decimal"
+                  min={0}
+                  className="w-full min-h-[44px] px-3 py-1.5 rounded-xl border border-slate-300 bg-white text-base font-extrabold tabular-nums"
+                  value={opUnitPrice}
+                  onChange={(e) => setOpUnitPrice(Number(e.target.value))}
+                />
+              </div>
+              <div className="col-span-4 p-2 rounded-xl bg-green-50 border border-green-200 text-right">
+                <span className="block text-[10px] font-bold uppercase text-green-900">
+                  Total
+                </span>
+                <strong className="text-sm sm:text-base font-extrabold text-green-800 tabular-nums">
+                  {formatCOP(opQuantity * opUnitPrice)}
+                </strong>
+              </div>
+            </div>
+
+            <div className="p-2.5 rounded-xl bg-blue-50/70 border border-blue-200 flex items-center justify-between gap-2">
+              <label className="flex items-center gap-2 text-xs font-bold text-blue-950 cursor-pointer">
+                <input
+                  type="checkbox"
+                  className="w-4 h-4 accent-blue-700 rounded shrink-0"
+                  checked={opAutoLeaveCrates}
+                  onChange={(e) => setOpAutoLeaveCrates(e.target.checked)}
+                />
+                <span>Deja canastillas al cliente (deuda automática)</span>
+              </label>
+              {opAutoLeaveCrates && (
+                <input
+                  type="number"
+                  inputMode="numeric"
+                  min={1}
+                  className="w-16 min-h-[34px] px-2 py-1 rounded-lg border border-blue-300 bg-white text-xs font-extrabold text-center text-blue-950 tabular-nums"
+                  value={opAutoCratesCount}
+                  onChange={(e) => setOpAutoCratesCount(Number(e.target.value))}
+                />
+              )}
+            </div>
+
+            <div className="grid grid-cols-3 gap-1.5">
+              {(
+                [
+                  { id: 'CASH', label: 'Efectivo' },
+                  { id: 'TRANSFER', label: 'Transferencia' },
+                  { id: 'CREDIT', label: 'Fiado' },
+                ] as const
+              ).map((pm) => (
+                <button
+                  key={pm.id}
+                  type="button"
+                  onClick={() => setOpPaymentMethod(pm.id)}
+                  className={`min-h-[42px] rounded-xl border text-xs font-bold cursor-pointer ${
+                    opPaymentMethod === pm.id
+                      ? 'bg-green-700 border-green-700 text-white'
+                      : 'bg-white border-slate-300 text-slate-800'
+                  }`}
+                >
+                  {pm.label}
+                </button>
+              ))}
+            </div>
+
+            {opPaymentMethod === 'CREDIT' && (
+              <div>
+                <label className="block text-xs font-bold text-slate-800 mb-1">
+                  Abono inmediato recibido hoy ($)
+                </label>
+                <input
+                  type="number"
+                  inputMode="decimal"
+                  min={0}
+                  max={opQuantity * opUnitPrice}
+                  className="w-full min-h-[42px] px-3 py-1.5 rounded-xl border border-slate-300 bg-white text-sm font-bold tabular-nums"
+                  value={opPaidImmediate}
+                  onChange={(e) => setOpPaidImmediate(Number(e.target.value))}
+                />
+              </div>
+            )}
+
+            <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setFabModalType(null)}
+                className="min-h-[44px] rounded-xl border border-slate-300 bg-white text-slate-700 font-bold text-xs sm:text-sm cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="submit"
+                className="min-h-[44px] rounded-xl bg-green-700 hover:bg-green-800 text-white font-extrabold text-xs sm:text-sm cursor-pointer"
+              >
+                Guardar Venta
+              </button>
+            </div>
+          </form>
+        )}
+
+        {fabModalType === 'EXPENSE' && (
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              executeSaveOperation('EXPENSE');
+            }}
+            className="space-y-3"
+          >
+            <div>
+              <label className="block text-xs font-bold text-slate-800 mb-1.5">
+                Categoría del gasto
+              </label>
+              <div className="grid grid-cols-2 gap-1.5">
+                {(
+                  [
+                    { id: 'FUEL', label: 'Combustible / ACPM' },
+                    { id: 'TOLL_PARKING', label: 'Peaje / Parqueo' },
+                    { id: 'FOOD', label: 'Alimentación' },
+                    { id: 'PERSONNEL_PAYMENT', label: 'Pago Ayudante' },
+                    { id: 'OTHER', label: 'Otro gasto' },
+                  ] as const
+                ).map((cat) => (
+                  <button
+                    key={cat.id}
+                    type="button"
+                    onClick={() => setOpExpenseCategory(cat.id)}
+                    className={`min-h-[42px] px-2.5 py-1.5 rounded-xl border text-xs font-bold cursor-pointer ${
+                      opExpenseCategory === cat.id
+                        ? 'bg-amber-50 border-amber-600 text-amber-950 ring-1 ring-amber-600'
+                        : 'bg-white border-slate-300 text-slate-800'
+                    }`}
+                  >
+                    {cat.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-800 mb-1">
+                Valor pagado ($)
+              </label>
+              <input
+                type="number"
+                inputMode="decimal"
+                min={1}
+                className="w-full min-h-[44px] px-3 py-1.5 rounded-xl border border-slate-300 bg-white text-lg font-extrabold tabular-nums"
+                value={opExpenseAmount}
+                onChange={(e) => setOpExpenseAmount(Number(e.target.value))}
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              {(['CASH', 'TRANSFER'] as const).map((pm) => (
+                <button
+                  key={pm}
+                  type="button"
+                  onClick={() => setOpPaymentMethod(pm)}
+                  className={`min-h-[42px] rounded-xl border text-xs font-bold cursor-pointer ${
+                    opPaymentMethod === pm
+                      ? 'bg-amber-600 border-amber-600 text-white'
+                      : 'bg-white border-slate-300 text-slate-800'
+                  }`}
+                >
+                  {pm === 'CASH' ? 'Efectivo' : 'Transferencia'}
+                </button>
+              ))}
+            </div>
+
+            <input
+              type="text"
+              placeholder="Detalle o recibo del gasto..."
+              className="w-full min-h-[42px] px-3 py-1.5 rounded-xl border border-slate-300 bg-white text-sm"
+              value={opNotes}
+              onChange={(e) => setOpNotes(e.target.value)}
+            />
+
+            <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setFabModalType(null)}
+                className="min-h-[44px] rounded-xl border border-slate-300 bg-white text-slate-700 font-bold text-xs sm:text-sm cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="submit"
+                className="min-h-[44px] rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-extrabold text-xs sm:text-sm cursor-pointer"
+              >
+                Guardar Gasto
+              </button>
+            </div>
+          </form>
+        )}
+      </BottomSheet>
+
+      {/* ====================================================================
+          MODAL CENTRADO 2 (CAMPANITA): AUTORIZACIONES CON TABLA PAGINADA
          ==================================================================== */}
       <BottomSheet
         isOpen={notificationsModalOpen}
         onClose={() => setNotificationsModalOpen(false)}
         title="Solicitudes de Autorización"
-        subtitle="Aprobación específica del dueño para ediciones con plazo vencido"
+        subtitle="Aprobación del dueño para ediciones fuera de plazo"
         icon={<Bell className="w-5 h-5" />}
       >
         {pendingAuthRequests.length === 0 ? (
@@ -1984,97 +2856,103 @@ export function App() {
               Todo al día
             </div>
             <p className="text-sm text-slate-600">
-              No hay solicitudes pendientes de autorización en este momento.
+              No hay solicitudes pendientes de autorización.
             </p>
           </div>
         ) : (
           <div className="space-y-3">
-            {pendingAuthRequests.map((req) => (
-              <div
-                key={req.id}
-                className="p-3.5 rounded-2xl border border-amber-200 bg-amber-50/70 space-y-2.5"
-              >
-                <div className="flex justify-between items-start gap-2">
-                  <div>
-                    <span className="text-[11px] font-bold uppercase text-amber-800">
-                      {req.id} · Op {req.operationId} (v
-                      {req.approvedOperationVersion})
-                    </span>
-                    <div className="font-bold text-sm sm:text-base text-slate-900">
-                      Solicita: {req.requestedByName}
-                    </div>
-                  </div>
-                </div>
+            <div className="overflow-hidden rounded-xl border border-slate-200">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="bg-slate-50 border-b border-slate-200 text-xs font-bold text-slate-600">
+                    <th className="py-2 px-3">Solicitud y Motivo</th>
+                    <th className="py-2 px-3 text-right">Decisión</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-200 text-xs sm:text-sm">
+                  {pendingAuthRequests
+                    .slice(
+                      (authReqsPage - 1) * PAGE_SIZE,
+                      authReqsPage * PAGE_SIZE
+                    )
+                    .map((req) => (
+                      <tr key={req.id} className="bg-white">
+                        <td className="py-2.5 px-3 align-middle">
+                          <div className="font-bold text-slate-900">
+                            {req.requestedByName}
+                          </div>
+                          <div className="text-xs text-slate-600">
+                            {formatCOP(req.currentValueSnapshot.totalAmount)} →{' '}
+                            <strong className="text-green-800">
+                              {formatCOP(
+                                req.requestedValueSnapshot.totalAmount
+                              )}
+                            </strong>
+                          </div>
+                          <div className="text-[11px] text-slate-500">
+                            "{req.reason}"
+                          </div>
+                        </td>
+                        <td className="py-2.5 px-3 text-right align-middle">
+                          <div className="flex flex-col gap-1">
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                const res =
+                                  await coreService.decideEditAuthorization({
+                                    ownerUserId: currentUser.id,
+                                    authorizationId: req.id,
+                                    decision: 'APPROVE',
+                                  });
+                                setFeedback({
+                                  type: res.ok ? 'success' : 'error',
+                                  text: res.message,
+                                });
+                                refreshState();
+                              }}
+                              className="px-2.5 py-1 rounded-lg bg-green-700 text-white text-xs font-bold cursor-pointer"
+                            >
+                              Aprobar
+                            </button>
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                const res =
+                                  await coreService.decideEditAuthorization({
+                                    ownerUserId: currentUser.id,
+                                    authorizationId: req.id,
+                                    decision: 'REJECT',
+                                  });
+                                setFeedback({
+                                  type: res.ok ? 'warning' : 'error',
+                                  text: res.message,
+                                });
+                                refreshState();
+                              }}
+                              className="px-2.5 py-1 rounded-lg bg-red-50 text-red-700 border border-red-200 text-xs font-bold cursor-pointer"
+                            >
+                              Rechazar
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                </tbody>
+              </table>
+            </div>
 
-                <div className="flex items-center gap-2 text-sm">
-                  <span className="text-slate-600">
-                    Actual:{' '}
-                    <strong className="tabular-nums text-slate-900">
-                      {formatCOP(req.currentValueSnapshot.totalAmount)}
-                    </strong>
-                  </span>
-                  <ArrowRight className="w-4 h-4 text-slate-400" />
-                  <span className="text-green-900">
-                    Nuevo:{' '}
-                    <strong className="tabular-nums font-extrabold">
-                      {formatCOP(req.requestedValueSnapshot.totalAmount)}
-                    </strong>
-                  </span>
-                </div>
-
-                <p className="text-xs sm:text-sm text-slate-700 bg-white p-2.5 rounded-xl border border-amber-200">
-                  <strong>Motivo:</strong> "{req.reason}"
-                </p>
-
-                <div className="grid grid-cols-2 gap-2.5 pt-1">
-                  <button
-                    type="button"
-                    onClick={async () => {
-                      const res = await coreService.decideEditAuthorization({
-                        ownerUserId: currentUser.id,
-                        authorizationId: req.id,
-                        decision: 'APPROVE',
-                      });
-                      setFeedback({
-                        type: res.ok ? 'success' : 'error',
-                        text: res.message,
-                      });
-                      refreshState();
-                    }}
-                    className="min-h-[44px] px-3 py-2 rounded-xl bg-green-700 hover:bg-green-800 text-white font-bold text-xs sm:text-sm flex items-center justify-center gap-1.5 cursor-pointer"
-                  >
-                    <CheckCircle2 className="w-4 h-4" />
-                    <span>Aprobar</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={async () => {
-                      const res = await coreService.decideEditAuthorization({
-                        ownerUserId: currentUser.id,
-                        authorizationId: req.id,
-                        decision: 'REJECT',
-                      });
-                      setFeedback({
-                        type: res.ok ? 'warning' : 'error',
-                        text: res.message,
-                      });
-                      refreshState();
-                    }}
-                    className="min-h-[44px] px-3 py-2 rounded-xl bg-white hover:bg-red-50 text-red-700 border border-red-200 font-bold text-xs sm:text-sm flex items-center justify-center gap-1.5 cursor-pointer"
-                  >
-                    <XCircle className="w-4 h-4" />
-                    <span>Rechazar</span>
-                  </button>
-                </div>
-              </div>
-            ))}
+            <TablePagination
+              currentPage={authReqsPage}
+              totalItems={pendingAuthRequests.length}
+              pageSize={PAGE_SIZE}
+              onPageChange={setAuthReqsPage}
+            />
           </div>
         )}
       </BottomSheet>
 
       {/* ====================================================================
-          MODAL 2: CERRAR DÍA / CONCILIACIÓN EN 4 PASOS (Se abre desde Ruta de Hoy)
+          MODAL CENTRADO 3: CERRAR DÍA / CONCILIACIÓN EN 4 PASOS
          ==================================================================== */}
       {activeShift && reconciliation && (
         <BottomSheet
@@ -2109,14 +2987,9 @@ export function App() {
             </div>
           }
         >
-          {/* PASO 1: INVENTARIO SOBRANTE */}
           {closureStep === 1 && (
-            <div className="space-y-3.5">
-              <p className="text-xs sm:text-sm text-slate-600">
-                Verifica cómo queda clasificado el sobrante real de cada producto antes de cerrar:
-              </p>
-
-              <div className="space-y-3">
+            <div className="space-y-3">
+              <div className="space-y-2.5">
                 {reconciliation.inventory.items.map((item) => {
                   const currentClass = state.closureClassificationsByShift[
                     activeShift.id
@@ -2157,20 +3030,20 @@ export function App() {
                   return (
                     <div
                       key={item.productId}
-                      className="p-3 rounded-xl border border-slate-200 bg-slate-50 space-y-2.5"
+                      className="p-2.5 rounded-xl border border-slate-200 bg-slate-50 space-y-2"
                     >
                       <div className="flex justify-between items-center">
-                        <strong className="text-sm font-bold text-slate-900">
+                        <strong className="text-xs sm:text-sm font-bold text-slate-900">
                           {item.productName}
                         </strong>
-                        <span className="text-xs font-extrabold px-2 py-0.5 rounded-md bg-green-100 text-green-900 tabular-nums">
+                        <span className="text-xs font-extrabold px-2 py-0.5 rounded bg-green-100 text-green-900 tabular-nums">
                           Sobrante: {item.expectedFinalInventory} {item.unit}
                         </span>
                       </div>
 
                       <div className="grid grid-cols-3 gap-2">
                         <div>
-                          <label className="block text-[11px] font-bold text-slate-600 mb-1">
+                          <label className="block text-[10px] font-bold text-slate-600">
                             Conservado
                           </label>
                           <input
@@ -2178,7 +3051,7 @@ export function App() {
                             inputMode="numeric"
                             min={0}
                             disabled={activeShift.status === 'CLOSED'}
-                            className="w-full min-h-[42px] px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white text-sm font-bold tabular-nums"
+                            className="w-full min-h-[38px] px-2 py-1 rounded-lg border border-slate-300 bg-white text-sm font-bold tabular-nums"
                             value={currentClass.carriedOverQty}
                             onChange={(e) =>
                               updateItemClass({
@@ -2188,7 +3061,7 @@ export function App() {
                           />
                         </div>
                         <div>
-                          <label className="block text-[11px] font-bold text-slate-600 mb-1">
+                          <label className="block text-[10px] font-bold text-slate-600">
                             Dev. Prov.
                           </label>
                           <input
@@ -2196,7 +3069,7 @@ export function App() {
                             inputMode="numeric"
                             min={0}
                             disabled={activeShift.status === 'CLOSED'}
-                            className="w-full min-h-[42px] px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white text-sm font-bold tabular-nums"
+                            className="w-full min-h-[38px] px-2 py-1 rounded-lg border border-slate-300 bg-white text-sm font-bold tabular-nums"
                             value={currentClass.returnedToSupplierDeliveredQty}
                             onChange={(e) => {
                               const v = Number(e.target.value);
@@ -2208,7 +3081,7 @@ export function App() {
                           />
                         </div>
                         <div>
-                          <label className="block text-[11px] font-bold text-slate-600 mb-1">
+                          <label className="block text-[10px] font-bold text-slate-600">
                             Merma
                           </label>
                           <input
@@ -2216,7 +3089,7 @@ export function App() {
                             inputMode="numeric"
                             min={0}
                             disabled={activeShift.status === 'CLOSED'}
-                            className="w-full min-h-[42px] px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white text-sm font-bold tabular-nums"
+                            className="w-full min-h-[38px] px-2 py-1 rounded-lg border border-slate-300 bg-white text-sm font-bold tabular-nums"
                             value={currentClass.shrinkageQty}
                             onChange={(e) =>
                               updateItemClass({
@@ -2226,20 +3099,6 @@ export function App() {
                           />
                         </div>
                       </div>
-
-                      {currentClass.shrinkageQty > 0 && (
-                        <input
-                          type="text"
-                          placeholder="Motivo obligatorio de la merma..."
-                          className="w-full min-h-[40px] px-3 py-1.5 rounded-lg border border-amber-300 bg-white text-xs text-slate-900"
-                          value={currentClass.shrinkageReason}
-                          onChange={(e) =>
-                            updateItemClass({
-                              shrinkageReason: e.target.value,
-                            })
-                          }
-                        />
-                      )}
                     </div>
                   );
                 })}
@@ -2248,7 +3107,7 @@ export function App() {
               <button
                 type="button"
                 onClick={() => setClosureStep(2)}
-                className="w-full min-h-[48px] px-4 py-2.5 rounded-xl bg-green-700 hover:bg-green-800 text-white font-bold text-sm flex items-center justify-center gap-2 cursor-pointer"
+                className="w-full min-h-[44px] rounded-xl bg-green-700 text-white font-bold text-xs sm:text-sm flex items-center justify-center gap-2 cursor-pointer"
               >
                 <span>Siguiente: Paso 2 (Cuentas)</span>
                 <ArrowRight className="w-4 h-4" />
@@ -2256,62 +3115,70 @@ export function App() {
             </div>
           )}
 
-          {/* PASO 2: UTILIDAD VS EFECTIVO */}
           {closureStep === 2 && (
-            <div className="space-y-3.5">
-              <div className="space-y-1.5 text-sm">
-                <div className="flex justify-between py-1.5 border-b border-slate-100">
-                  <span className="text-slate-600">Ventas de la jornada:</span>
-                  <strong className="font-bold tabular-nums">
-                    {formatCOP(reconciliation.financials.totalSalesAmount)}
-                  </strong>
-                </div>
-                <div className="flex justify-between py-1.5 border-b border-slate-100">
-                  <span className="text-slate-600">Costo de lo vendido:</span>
-                  <strong className="font-bold tabular-nums">
-                    -{formatCOP(reconciliation.financials.costOfGoodsSold)}
-                  </strong>
-                </div>
-                <div className="flex justify-between py-1.5 border-b border-slate-100">
-                  <span className="text-slate-600">Gastos y personal:</span>
-                  <strong className="font-bold tabular-nums">
-                    -
-                    {formatCOP(
-                      reconciliation.financials.totalExpensesAndPersonnel
-                    )}
-                  </strong>
-                </div>
-                <div className="flex justify-between items-center p-3 rounded-xl bg-green-50 border border-green-200">
-                  <span className="font-bold text-green-950">
-                    Utilidad económica neta:
-                  </span>
-                  <strong className="text-lg font-extrabold text-green-800 tabular-nums">
-                    {formatCOP(reconciliation.financials.economicNetProfit)}
-                  </strong>
-                </div>
+            <div className="space-y-3">
+              <div className="overflow-hidden rounded-xl border border-slate-200">
+                <table className="w-full text-left border-collapse text-xs sm:text-sm">
+                  <tbody className="divide-y divide-slate-200">
+                    <tr>
+                      <td className="py-2 px-3 text-slate-600">
+                        Ventas de la jornada
+                      </td>
+                      <td className="py-2 px-3 text-right font-bold tabular-nums">
+                        {formatCOP(reconciliation.financials.totalSalesAmount)}
+                      </td>
+                    </tr>
+                    <tr>
+                      <td className="py-2 px-3 text-slate-600">
+                        Costo de lo vendido
+                      </td>
+                      <td className="py-2 px-3 text-right font-bold tabular-nums">
+                        -{formatCOP(reconciliation.financials.costOfGoodsSold)}
+                      </td>
+                    </tr>
+                    <tr>
+                      <td className="py-2 px-3 text-slate-600">
+                        Gastos y personal
+                      </td>
+                      <td className="py-2 px-3 text-right font-bold tabular-nums">
+                        -
+                        {formatCOP(
+                          reconciliation.financials.totalExpensesAndPersonnel
+                        )}
+                      </td>
+                    </tr>
+                    <tr className="bg-green-50">
+                      <td className="py-2.5 px-3 font-bold text-green-950">
+                        Utilidad económica neta
+                      </td>
+                      <td className="py-2.5 px-3 text-right font-extrabold text-green-800 tabular-nums">
+                        {formatCOP(reconciliation.financials.economicNetProfit)}
+                      </td>
+                    </tr>
+                    <tr className="bg-slate-100">
+                      <td className="py-2.5 px-3 font-bold text-slate-900">
+                        Efectivo físico esperado
+                      </td>
+                      <td className="py-2.5 px-3 text-right font-extrabold text-slate-900 tabular-nums">
+                        {formatCOP(reconciliation.financials.expectedCashInBox)}
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
               </div>
 
-              <div className="p-3 rounded-xl bg-slate-100 border border-slate-200 flex justify-between items-center">
-                <span className="text-sm font-bold text-slate-900">
-                  Efectivo físico esperado en caja:
-                </span>
-                <strong className="text-lg font-extrabold text-slate-900 tabular-nums">
-                  {formatCOP(reconciliation.financials.expectedCashInBox)}
-                </strong>
-              </div>
-
-              <div className="grid grid-cols-2 gap-2.5">
+              <div className="grid grid-cols-2 gap-2">
                 <button
                   type="button"
                   onClick={() => setClosureStep(1)}
-                  className="min-h-[46px] px-3 py-2 rounded-xl border border-slate-300 bg-white text-slate-800 font-bold text-sm cursor-pointer"
+                  className="min-h-[44px] rounded-xl border border-slate-300 bg-white text-slate-800 font-bold text-xs sm:text-sm cursor-pointer"
                 >
                   Atrás
                 </button>
                 <button
                   type="button"
                   onClick={() => setClosureStep(3)}
-                  className="min-h-[46px] px-3 py-2 rounded-xl bg-green-700 text-white font-bold text-sm cursor-pointer"
+                  className="min-h-[44px] rounded-xl bg-green-700 text-white font-bold text-xs sm:text-sm cursor-pointer"
                 >
                   Paso 3: Arqueo
                 </button>
@@ -2319,30 +3186,29 @@ export function App() {
             </div>
           )}
 
-          {/* PASO 3: CONTEO DE DINERO */}
           {closureStep === 3 && (
-            <div className="space-y-3.5">
+            <div className="space-y-3">
               <div>
-                <label className="block text-sm font-bold text-slate-800 mb-1">
+                <label className="block text-xs font-bold text-slate-800 mb-1">
                   Efectivo contado en billetes y monedas ($)
                 </label>
                 <input
                   type="number"
                   inputMode="decimal"
-                  className="w-full min-h-[48px] px-3.5 py-2 rounded-xl border border-slate-300 bg-white text-lg font-bold text-slate-900 tabular-nums"
+                  className="w-full min-h-[44px] px-3 py-1.5 rounded-xl border border-slate-300 bg-white text-base font-bold tabular-nums"
                   value={countedCashInput}
                   onChange={(e) => setCountedCashInput(Number(e.target.value))}
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-bold text-slate-800 mb-1">
+                <label className="block text-xs font-bold text-slate-800 mb-1">
                   Total en transferencias verificadas ($)
                 </label>
                 <input
                   type="number"
                   inputMode="decimal"
-                  className="w-full min-h-[48px] px-3.5 py-2 rounded-xl border border-slate-300 bg-white text-lg font-bold text-slate-900 tabular-nums"
+                  className="w-full min-h-[44px] px-3 py-1.5 rounded-xl border border-slate-300 bg-white text-base font-bold tabular-nums"
                   value={countedTransferInput}
                   onChange={(e) =>
                     setCountedTransferInput(Number(e.target.value))
@@ -2354,19 +3220,18 @@ export function App() {
                 reconciliation.financials.expectedCashInBox ||
                 countedTransferInput !==
                   reconciliation.financials.expectedTransfersInBank) && (
-                <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 space-y-2.5">
+                <div className="p-2.5 rounded-xl bg-amber-50 border border-amber-200 space-y-2">
                   <div className="text-xs font-bold text-amber-950">
-                    Diferencia detectada de{' '}
+                    Diferencia:{' '}
                     {formatCOP(
                       countedCashInput -
                         reconciliation.financials.expectedCashInBox
                     )}
-                    . Explica y confirma:
                   </div>
                   <input
                     type="text"
                     placeholder="Explica la causa de la diferencia..."
-                    className="w-full min-h-[42px] px-3 py-1.5 rounded-lg border border-amber-300 bg-white text-sm"
+                    className="w-full min-h-[38px] px-2.5 py-1 rounded-lg border border-amber-300 bg-white text-xs"
                     value={diffExplanation}
                     onChange={(e) => setDiffExplanation(e.target.value)}
                   />
@@ -2377,23 +3242,23 @@ export function App() {
                       checked={diffAcknowledged}
                       onChange={(e) => setDiffAcknowledged(e.target.checked)}
                     />
-                    <span>Reconozco expresamente esta diferencia</span>
+                    <span>Reconozco esta diferencia</span>
                   </label>
                 </div>
               )}
 
-              <div className="grid grid-cols-2 gap-2.5">
+              <div className="grid grid-cols-2 gap-2">
                 <button
                   type="button"
                   onClick={() => setClosureStep(2)}
-                  className="min-h-[46px] px-3 py-2 rounded-xl border border-slate-300 bg-white text-slate-800 font-bold text-sm cursor-pointer"
+                  className="min-h-[44px] rounded-xl border border-slate-300 bg-white text-slate-800 font-bold text-xs sm:text-sm cursor-pointer"
                 >
                   Atrás
                 </button>
                 <button
                   type="button"
                   onClick={() => setClosureStep(4)}
-                  className="min-h-[46px] px-3 py-2 rounded-xl bg-green-700 text-white font-bold text-sm cursor-pointer"
+                  className="min-h-[44px] rounded-xl bg-green-700 text-white font-bold text-xs sm:text-sm cursor-pointer"
                 >
                   Paso 4: Confirmar
                 </button>
@@ -2401,17 +3266,16 @@ export function App() {
             </div>
           )}
 
-          {/* PASO 4: CONFIRMACIÓN DEFINITIVA */}
           {closureStep === 4 && (
-            <div className="space-y-3.5">
-              <label className="flex items-start gap-3 p-3.5 rounded-xl bg-slate-50 border border-slate-200 cursor-pointer">
+            <div className="space-y-3">
+              <label className="flex items-start gap-2.5 p-3 rounded-xl bg-slate-50 border border-slate-200 cursor-pointer">
                 <input
                   type="checkbox"
                   className="w-5 h-5 mt-0.5 accent-green-700 rounded shrink-0"
                   checked={finalConfirmChecked}
                   onChange={(e) => setFinalConfirmChecked(e.target.checked)}
                 />
-                <span className="text-sm font-semibold text-slate-800 leading-snug">
+                <span className="text-xs sm:text-sm font-semibold text-slate-800 leading-snug">
                   Confirmo que revisé el resumen de inventario, cartera y efectivo, y deseo cerrar definitivamente la jornada.
                 </span>
               </label>
@@ -2440,15 +3304,15 @@ export function App() {
                     }
                     refreshState();
                   }}
-                  className="w-full min-h-[52px] px-4 py-3 rounded-xl bg-red-700 hover:bg-red-800 text-white font-extrabold text-base flex items-center justify-center gap-2 cursor-pointer"
+                  className="w-full min-h-[48px] rounded-xl bg-red-700 hover:bg-red-800 text-white font-extrabold text-sm flex items-center justify-center gap-2 cursor-pointer"
                 >
-                  <Lock className="w-5 h-5" />
+                  <Lock className="w-4 h-4" />
                   <span>Ejecutar Cierre Definitivo</span>
                 </button>
               ) : (
-                <div className="space-y-3">
-                  <div className="p-3.5 rounded-xl bg-green-50 border border-green-200 text-green-900 text-sm font-bold">
-                    Jornada cerrada definitivamente ({activeShift.closureId})
+                <div className="space-y-2.5">
+                  <div className="p-3 rounded-xl bg-green-50 border border-green-200 text-green-900 text-xs font-bold">
+                    Jornada cerrada ({activeShift.closureId})
                   </div>
                   {currentUser.role === 'OWNER' && (
                     <button
@@ -2483,7 +3347,7 @@ export function App() {
                         }
                         refreshState();
                       }}
-                      className="w-full min-h-[48px] px-4 py-2.5 rounded-xl bg-green-700 hover:bg-green-800 text-white font-bold text-sm flex items-center justify-center gap-2 cursor-pointer"
+                      className="w-full min-h-[44px] rounded-xl bg-green-700 text-white font-bold text-xs sm:text-sm flex items-center justify-center gap-2 cursor-pointer"
                     >
                       <Sunrise className="w-4 h-4" />
                       <span>Abrir siguiente jornada</span>
@@ -2497,22 +3361,19 @@ export function App() {
       )}
 
       {/* ====================================================================
-          MODAL 3: AUDITORÍA Y PRUEBAS SECCIONADO POR TABS (Se abre desde Vista Dueño)
+          MODAL CENTRADO 4: AUDITORÍA Y PRUEBAS SECCIONADO POR TABS CON PAGINACIÓN
          ==================================================================== */}
       <BottomSheet
         isOpen={auditModalOpen}
         onClose={() => setAuditModalOpen(false)}
         title="Auditoría y Verificación"
-        subtitle="Bitácora inmutable, conflictos de sincronización y 15 pruebas oficiales"
+        subtitle="Tablas paginadas de bitácora, conflictos y 15 pruebas oficiales"
         icon={<ShieldCheck className="w-5 h-5" />}
         headerExtra={
           <div className="grid grid-cols-3 gap-1.5">
             {(
               [
-                {
-                  id: 'LOGS',
-                  label: `Bitácora (${state.auditLogs.length})`,
-                },
+                { id: 'LOGS', label: `Bitácora (${state.auditLogs.length})` },
                 {
                   id: 'CONFLICTS',
                   label: `Conflictos (${state.syncConflicts.length})`,
@@ -2537,71 +3398,92 @@ export function App() {
         }
       >
         {auditModalTab === 'LOGS' && (
-          <div className="space-y-2">
-            {state.auditLogs.slice(0, 30).map((log) => (
-              <div
-                key={log.id}
-                className={`p-3 rounded-xl border text-xs sm:text-sm space-y-1 ${
-                  log.result === 'REJECTED'
-                    ? 'bg-red-50/60 border-red-200'
-                    : 'bg-slate-50 border-slate-200'
-                }`}
-              >
-                <div className="flex items-center justify-between gap-2">
-                  <strong className="font-bold text-slate-900">
-                    {log.actionType}
-                  </strong>
-                  <span
-                    className={`px-2 py-0.5 rounded-full text-[11px] font-bold ${
-                      log.result === 'SUCCESS'
-                        ? 'bg-green-100 text-green-800'
-                        : 'bg-red-100 text-red-800'
-                    }`}
-                  >
-                    {log.result === 'SUCCESS' ? 'Aprobado' : 'Bloqueado'}
-                  </span>
-                </div>
-                <div className="text-slate-700">
-                  Autor: <strong>{log.actorName}</strong>
-                  {log.authorizerName && (
-                    <span>
-                      {' '}
-                      · Autorizó: <strong>{log.authorizerName}</strong>
-                    </span>
-                  )}
-                </div>
-                <div className="text-slate-600">Motivo: {log.reason}</div>
-              </div>
-            ))}
+          <div className="space-y-2.5">
+            <div className="overflow-hidden rounded-xl border border-slate-200">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="bg-slate-50 border-b border-slate-200 text-xs font-bold text-slate-600">
+                    <th className="py-2 px-3">Acción y Autor</th>
+                    <th className="py-2 px-3 text-right">Resultado</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-200 text-xs">
+                  {state.auditLogs
+                    .slice(
+                      (auditLogsPage - 1) * PAGE_SIZE,
+                      auditLogsPage * PAGE_SIZE
+                    )
+                    .map((log) => (
+                      <tr key={log.id} className="bg-white">
+                        <td className="py-2 px-3">
+                          <div className="font-bold text-slate-900">
+                            {log.actionType}
+                          </div>
+                          <div className="text-slate-600">
+                            {log.actorName} · {log.reason}
+                          </div>
+                        </td>
+                        <td className="py-2 px-3 text-right align-middle">
+                          <span
+                            className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                              log.result === 'SUCCESS'
+                                ? 'bg-green-100 text-green-800'
+                                : 'bg-red-100 text-red-800'
+                            }`}
+                          >
+                            {log.result === 'SUCCESS'
+                              ? 'Aprobado'
+                              : 'Bloqueado'}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                </tbody>
+              </table>
+            </div>
+
+            <TablePagination
+              currentPage={auditLogsPage}
+              totalItems={state.auditLogs.length}
+              pageSize={PAGE_SIZE}
+              onPageChange={setAuditLogsPage}
+            />
           </div>
         )}
 
         {auditModalTab === 'CONFLICTS' && (
           <div className="space-y-2.5">
             {state.syncConflicts.length === 0 ? (
-              <p className="text-sm text-slate-600 py-4 text-center">
+              <p className="text-sm text-slate-600 py-8 text-center">
                 No existen conflictos de sincronización pendientes.
               </p>
             ) : (
-              state.syncConflicts.map((c) => (
-                <div
-                  key={c.id}
-                  className="p-3 rounded-xl border border-amber-200 bg-amber-50 text-xs sm:text-sm space-y-1"
-                >
-                  <div className="font-bold text-amber-950">
-                    Conflicto {c.id} ({c.entityType})
-                  </div>
-                  <div className="text-amber-900">
-                    Estado: {c.resolved ? 'Resuelto' : 'Conservado localmente'}
-                  </div>
-                </div>
-              ))
+              <div className="overflow-hidden rounded-xl border border-slate-200">
+                <table className="w-full text-left border-collapse text-xs">
+                  <thead>
+                    <tr className="bg-slate-50 border-b border-slate-200 font-bold text-slate-600">
+                      <th className="py-2 px-3">Conflicto</th>
+                      <th className="py-2 px-3 text-right">Estado</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-200">
+                    {state.syncConflicts.map((c) => (
+                      <tr key={c.id} className="bg-white">
+                        <td className="py-2 px-3 font-bold">{c.id}</td>
+                        <td className="py-2 px-3 text-right">
+                          {c.resolved ? 'Resuelto' : 'Conservado'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             )}
           </div>
         )}
 
         {auditModalTab === 'TESTS' && (
-          <div className="space-y-3">
+          <div className="space-y-2.5">
             <button
               type="button"
               disabled={runningTests}
@@ -2611,38 +3493,65 @@ export function App() {
                 setTestResults(res.results);
                 setRunningTests(false);
               }}
-              className="w-full min-h-[44px] px-4 py-2 rounded-xl bg-green-700 hover:bg-green-800 text-white font-bold text-xs sm:text-sm flex items-center justify-center gap-2 cursor-pointer"
+              className="w-full min-h-[40px] px-3 py-1.5 rounded-xl bg-green-700 text-white font-bold text-xs flex items-center justify-center gap-2 cursor-pointer"
             >
               <RefreshCcw
-                className={`w-4 h-4 ${runningTests ? 'animate-spin' : ''}`}
+                className={`w-3.5 h-3.5 ${runningTests ? 'animate-spin' : ''}`}
               />
-              <span>Ejecutar verificación de 15 pruebas oficiales</span>
+              <span>Re-ejecutar las 15 pruebas oficiales</span>
             </button>
 
             {testResults && (
-              <div className="space-y-2">
-                {testResults.map((tr) => (
-                  <div
-                    key={tr.testNumber}
-                    className="p-2.5 rounded-xl border border-green-200 bg-green-50/50 text-xs space-y-0.5"
-                  >
-                    <div className="font-bold text-slate-900 flex items-center gap-1.5">
-                      <CheckCircle2 className="w-3.5 h-3.5 text-green-700 shrink-0" />
-                      <span>
-                        #{tr.testNumber}. {tr.title}
-                      </span>
-                    </div>
-                    <p className="text-slate-600 pl-5">{tr.evidenceSummary}</p>
-                  </div>
-                ))}
-              </div>
+              <>
+                <div className="overflow-hidden rounded-xl border border-slate-200">
+                  <table className="w-full text-left border-collapse text-xs">
+                    <thead>
+                      <tr className="bg-slate-50 border-b border-slate-200 font-bold text-slate-600">
+                        <th className="py-2 px-3">Prueba Oficial</th>
+                        <th className="py-2 px-3 text-right">Estado</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-200">
+                      {testResults
+                        .slice(
+                          (testsPage - 1) * PAGE_SIZE,
+                          testsPage * PAGE_SIZE
+                        )
+                        .map((tr) => (
+                          <tr key={tr.testNumber} className="bg-white">
+                            <td className="py-2 px-3">
+                              <div className="font-bold text-slate-900">
+                                #{tr.testNumber}. {tr.title}
+                              </div>
+                              <div className="text-[11px] text-slate-500 line-clamp-1">
+                                {tr.evidenceSummary}
+                              </div>
+                            </td>
+                            <td className="py-2 px-3 text-right align-middle">
+                              <span className="px-2 py-0.5 rounded-full bg-green-100 text-green-800 font-bold text-[10px]">
+                                OK
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                <TablePagination
+                  currentPage={testsPage}
+                  totalItems={testResults.length}
+                  pageSize={PAGE_SIZE}
+                  onPageChange={setTestsPage}
+                />
+              </>
             )}
           </div>
         )}
       </BottomSheet>
 
       {/* ====================================================================
-          HOJA INFERIOR (BOTTOM SHEET): CAMBIO DE SESIÓN Y ROL POR PIN
+          MODAL CENTRADO 5: CAMBIO DE SESIÓN Y ROL POR PIN
          ==================================================================== */}
       <AuthLoginSheet
         isOpen={authSheetOpen}
@@ -2660,7 +3569,7 @@ export function App() {
       />
 
       {/* ====================================================================
-          HOJA INFERIOR (BOTTOM SHEET): ESTADO DE CONEXIÓN Y RESPALDO
+          MODAL CENTRADO 6: ESTADO DE CONEXIÓN Y RESPALDO
          ==================================================================== */}
       <PwaConnectionSheet
         isOpen={connectionSheetOpen}
@@ -2688,596 +3597,7 @@ export function App() {
       />
 
       {/* ====================================================================
-          MODAL OPTIMIZADO DE OPERACIONES (Botón Flotante Venta/Gasto, Proveedor y Cliente)
-         ==================================================================== */}
-      <BottomSheet
-        isOpen={Boolean(newOpModalType)}
-        onClose={() => setNewOpModalType(null)}
-        title={
-          newOpModalType === 'SALE'
-            ? 'Anotar Venta'
-            : newOpModalType === 'EXPENSE'
-            ? 'Anotar Gasto o Personal'
-            : newOpModalType === 'PURCHASE'
-            ? 'Comprar Fruta a Proveedor'
-            : newOpModalType === 'SUPPLIER_RETURN'
-            ? 'Devolución a Proveedor'
-            : newOpModalType === 'COLLECTION_PAST_DEBT'
-            ? 'Cobrar Fiado a Cliente'
-            : 'Movimiento de Canastillas'
-        }
-        subtitle="Selector rápido con buscador · Sin desplazamientos largos"
-        icon={<Plus className="w-5 h-5" />}
-        headerExtra={
-          opModalContext === 'FAB' ? (
-            <div className="grid grid-cols-2 gap-1.5">
-              <button
-                type="button"
-                onClick={() => openOperationModal('SALE', 'FAB')}
-                className={`py-1.5 px-3 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
-                  newOpModalType === 'SALE'
-                    ? 'bg-green-700 text-white'
-                    : 'bg-slate-100 text-slate-700'
-                }`}
-              >
-                Anotar Venta
-              </button>
-              <button
-                type="button"
-                onClick={() => openOperationModal('EXPENSE', 'FAB')}
-                className={`py-1.5 px-3 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
-                  newOpModalType === 'EXPENSE'
-                    ? 'bg-amber-600 text-white'
-                    : 'bg-slate-100 text-slate-700'
-                }`}
-              >
-                Anotar Gasto
-              </button>
-            </div>
-          ) : opModalContext === 'SUPPLIER' ? (
-            <div className="grid grid-cols-3 gap-1.5">
-              <button
-                type="button"
-                onClick={() => openOperationModal('PURCHASE', 'SUPPLIER')}
-                className={`py-1.5 px-2 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
-                  newOpModalType === 'PURCHASE'
-                    ? 'bg-green-700 text-white'
-                    : 'bg-slate-100 text-slate-700'
-                }`}
-              >
-                Comprar
-              </button>
-              <button
-                type="button"
-                onClick={() =>
-                  openOperationModal('SUPPLIER_RETURN', 'SUPPLIER')
-                }
-                className={`py-1.5 px-2 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
-                  newOpModalType === 'SUPPLIER_RETURN'
-                    ? 'bg-amber-600 text-white'
-                    : 'bg-slate-100 text-slate-700'
-                }`}
-              >
-                Devolver
-              </button>
-              <button
-                type="button"
-                onClick={() =>
-                  openOperationModal('CRATE_MOVEMENT', 'SUPPLIER', {
-                    crateMovementType: 'RECEIVED_FROM_SUPPLIER',
-                  })
-                }
-                className={`py-1.5 px-2 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
-                  newOpModalType === 'CRATE_MOVEMENT'
-                    ? 'bg-slate-900 text-white'
-                    : 'bg-slate-100 text-slate-700'
-                }`}
-              >
-                Canastillas
-              </button>
-            </div>
-          ) : (
-            <div className="grid grid-cols-2 gap-1.5">
-              <button
-                type="button"
-                onClick={() =>
-                  openOperationModal('COLLECTION_PAST_DEBT', 'CLIENT', {
-                    preselectedClientId: opClientId,
-                  })
-                }
-                className={`py-1.5 px-3 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
-                  newOpModalType === 'COLLECTION_PAST_DEBT'
-                    ? 'bg-blue-600 text-white'
-                    : 'bg-slate-100 text-slate-700'
-                }`}
-              >
-                Cobrar Fiado ($)
-              </button>
-              <button
-                type="button"
-                onClick={() =>
-                  openOperationModal('CRATE_MOVEMENT', 'CLIENT', {
-                    preselectedClientId: opClientId,
-                    crateMovementType: 'RETURNED_BY_CLIENT',
-                  })
-                }
-                className={`py-1.5 px-3 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
-                  newOpModalType === 'CRATE_MOVEMENT'
-                    ? 'bg-slate-900 text-white'
-                    : 'bg-slate-100 text-slate-700'
-                }`}
-              >
-                Devolver Canastillas
-              </button>
-            </div>
-          )
-        }
-      >
-        <form onSubmit={handleSaveNewOperation} className="space-y-3">
-          {/* Selector Compacto con Buscador para Producto (soporta 10+ productos en 1 sola línea) */}
-          {(newOpModalType === 'SALE' ||
-            newOpModalType === 'PURCHASE' ||
-            newOpModalType === 'SUPPLIER_RETURN') && (
-            <SearchableSelect
-              label="Producto"
-              options={productPickerOptions}
-              value={opProductId}
-              searchPlaceholder="Buscar producto..."
-              onChange={(prodId) => {
-                setOpProductId(prodId);
-                const prod = state.products.find((p) => p.id === prodId);
-                if (prod) {
-                  setOpUnitPrice(
-                    newOpModalType === 'PURCHASE'
-                      ? prod.defaultCostPrice
-                      : prod.defaultSalePrice
-                  );
-                  const usesCrates = prod.unit
-                    .toLowerCase()
-                    .includes('canastilla');
-                  setOpAutoLeaveCrates(usesCrates);
-                  setOpAutoCratesCount(opQuantity);
-                }
-              }}
-            />
-          )}
-
-          {/* Selector Compacto con Buscador para Cliente (soporta 70+ clientes en 1 sola línea) */}
-          {(newOpModalType === 'SALE' ||
-            newOpModalType === 'COLLECTION_PAST_DEBT' ||
-            (newOpModalType === 'CRATE_MOVEMENT' &&
-              opModalContext === 'CLIENT')) && (
-            <SearchableSelect
-              label="Cliente"
-              options={clientPickerOptions}
-              value={opClientId}
-              searchPlaceholder="Escribir nombre o teléfono del cliente..."
-              onChange={(cId) => setOpClientId(cId)}
-            />
-          )}
-
-          {/* Selector Compacto con Buscador para Proveedor */}
-          {(newOpModalType === 'PURCHASE' ||
-            newOpModalType === 'SUPPLIER_RETURN' ||
-            (newOpModalType === 'CRATE_MOVEMENT' &&
-              opModalContext === 'SUPPLIER')) && (
-            <SearchableSelect
-              label="Proveedor / Finca"
-              options={supplierPickerOptions}
-              value={opSupplierId}
-              searchPlaceholder="Buscar proveedor..."
-              onChange={(sId) => setOpSupplierId(sId)}
-            />
-          )}
-
-          {/* Cantidad y Precio en una fila compacta + Total integrado */}
-          {(newOpModalType === 'SALE' || newOpModalType === 'PURCHASE') && (
-            <>
-              <div className="grid grid-cols-12 gap-2.5 items-end">
-                <div className="col-span-4">
-                  <label className="block text-xs sm:text-sm font-bold text-slate-800 mb-1">
-                    Cantidad
-                  </label>
-                  <input
-                    type="number"
-                    inputMode="numeric"
-                    min={1}
-                    className="w-full min-h-[46px] px-3 py-2 rounded-xl border border-slate-300 bg-white text-lg font-extrabold text-slate-900 tabular-nums focus:outline-none focus:ring-2 focus:ring-green-600"
-                    value={opQuantity}
-                    onChange={(e) => {
-                      const q = Number(e.target.value);
-                      setOpQuantity(q);
-                      setOpAutoCratesCount(q);
-                    }}
-                  />
-                </div>
-                <div className="col-span-4">
-                  <label className="block text-xs sm:text-sm font-bold text-slate-800 mb-1">
-                    Unitario ($)
-                  </label>
-                  <input
-                    type="number"
-                    inputMode="decimal"
-                    min={0}
-                    className="w-full min-h-[46px] px-3 py-2 rounded-xl border border-slate-300 bg-white text-lg font-extrabold text-slate-900 tabular-nums focus:outline-none focus:ring-2 focus:ring-green-600"
-                    value={opUnitPrice}
-                    onChange={(e) => setOpUnitPrice(Number(e.target.value))}
-                  />
-                </div>
-                <div className="col-span-4 p-2.5 rounded-xl bg-green-50 border border-green-200 text-right">
-                  <span className="block text-[10px] font-bold uppercase text-green-900">
-                    Total
-                  </span>
-                  <strong className="text-base sm:text-lg font-extrabold text-green-800 tabular-nums">
-                    {formatCOP(opQuantity * opUnitPrice)}
-                  </strong>
-                </div>
-              </div>
-
-              {/* Deuda automática de canastillas cuando el cliente lleva producto con canastilla */}
-              {newOpModalType === 'SALE' && (
-                <div className="p-2.5 rounded-xl bg-blue-50/70 border border-blue-200 flex items-center justify-between gap-2">
-                  <label className="flex items-center gap-2 text-xs sm:text-sm font-bold text-blue-950 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      className="w-4 h-4 accent-blue-700 rounded shrink-0"
-                      checked={opAutoLeaveCrates}
-                      onChange={(e) => setOpAutoLeaveCrates(e.target.checked)}
-                    />
-                    <span>
-                      Deja canastillas al cliente (deuda automática)
-                    </span>
-                  </label>
-                  {opAutoLeaveCrates && (
-                    <input
-                      type="number"
-                      inputMode="numeric"
-                      min={1}
-                      className="w-16 min-h-[36px] px-2 py-1 rounded-lg border border-blue-300 bg-white text-sm font-extrabold text-center text-blue-950 tabular-nums"
-                      value={opAutoCratesCount}
-                      onChange={(e) =>
-                        setOpAutoCratesCount(Number(e.target.value))
-                      }
-                    />
-                  )}
-                </div>
-              )}
-            </>
-          )}
-
-          {newOpModalType === 'COLLECTION_PAST_DEBT' && (
-            <>
-              <div className="grid grid-cols-2 gap-2">
-                {(
-                  [
-                    {
-                      id: 'PAST',
-                      title: 'Deuda días anteriores',
-                      sub: 'No suma como venta hoy',
-                    },
-                    {
-                      id: 'CURRENT',
-                      title: 'Abono fiado de hoy',
-                      sub: 'Reduce saldo de hoy',
-                    },
-                  ] as const
-                ).map((opt) => (
-                  <button
-                    key={opt.id}
-                    type="button"
-                    onClick={() => setOpCollectionKind(opt.id)}
-                    className={`p-2.5 rounded-xl border text-left transition-colors cursor-pointer ${
-                      opCollectionKind === opt.id
-                        ? 'bg-blue-50 border-blue-600 text-blue-950 ring-1 ring-blue-600'
-                        : 'bg-white border-slate-300 text-slate-800'
-                    }`}
-                  >
-                    <div className="text-xs sm:text-sm font-bold">
-                      {opt.title}
-                    </div>
-                    <div className="text-[11px] text-slate-500">{opt.sub}</div>
-                  </button>
-                ))}
-              </div>
-
-              <div className="grid grid-cols-2 gap-2.5">
-                <div>
-                  <label className="block text-xs sm:text-sm font-bold text-slate-800 mb-1">
-                    Abono capital ($)
-                  </label>
-                  <input
-                    type="number"
-                    inputMode="decimal"
-                    min={0}
-                    className="w-full min-h-[46px] px-3 py-2 rounded-xl border border-slate-300 bg-white text-lg font-bold text-slate-900 tabular-nums"
-                    value={opCollectionAmount}
-                    onChange={(e) =>
-                      setOpCollectionAmount(Number(e.target.value))
-                    }
-                  />
-                </div>
-                {opCollectionKind === 'PAST' && (
-                  <div>
-                    <label className="block text-xs sm:text-sm font-bold text-slate-800 mb-1">
-                      Interés pactado ($)
-                    </label>
-                    <input
-                      type="number"
-                      inputMode="decimal"
-                      min={0}
-                      className="w-full min-h-[46px] px-3 py-2 rounded-xl border border-slate-300 bg-white text-lg font-bold text-slate-900 tabular-nums"
-                      value={opCollectionInterest}
-                      onChange={(e) =>
-                        setOpCollectionInterest(Number(e.target.value))
-                      }
-                    />
-                  </div>
-                )}
-              </div>
-            </>
-          )}
-
-          {newOpModalType === 'EXPENSE' && (
-            <>
-              <div>
-                <label className="block text-xs sm:text-sm font-bold text-slate-800 mb-1">
-                  Categoría del gasto
-                </label>
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
-                  {(
-                    [
-                      { id: 'FUEL', label: 'Combustible' },
-                      { id: 'TOLL_PARKING', label: 'Peaje / Parqueo' },
-                      { id: 'FOOD', label: 'Alimentación' },
-                      { id: 'PERSONNEL_PAYMENT', label: 'Pago Ayudante' },
-                      { id: 'OTHER', label: 'Otro gasto' },
-                    ] as const
-                  ).map((cat) => (
-                    <button
-                      key={cat.id}
-                      type="button"
-                      onClick={() => setOpExpenseCategory(cat.id)}
-                      className={`min-h-[42px] px-2.5 py-1.5 rounded-xl border text-xs font-bold transition-colors cursor-pointer ${
-                        opExpenseCategory === cat.id
-                          ? 'bg-amber-50 border-amber-600 text-amber-950 ring-1 ring-amber-600'
-                          : 'bg-white border-slate-300 text-slate-800'
-                      }`}
-                    >
-                      {cat.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <div>
-                <label className="block text-xs sm:text-sm font-bold text-slate-800 mb-1">
-                  Valor pagado ($)
-                </label>
-                <input
-                  type="number"
-                  inputMode="decimal"
-                  min={1}
-                  className="w-full min-h-[46px] px-3.5 py-2 rounded-xl border border-slate-300 bg-white text-lg font-bold text-slate-900 tabular-nums"
-                  value={opExpenseAmount}
-                  onChange={(e) => setOpExpenseAmount(Number(e.target.value))}
-                />
-              </div>
-            </>
-          )}
-
-          {newOpModalType === 'SUPPLIER_RETURN' && (
-            <>
-              <div className="grid grid-cols-2 gap-2.5">
-                <div>
-                  <label className="block text-xs sm:text-sm font-bold text-slate-800 mb-1">
-                    Cant. entregada
-                  </label>
-                  <input
-                    type="number"
-                    inputMode="numeric"
-                    min={1}
-                    className="w-full min-h-[46px] px-3 py-2 rounded-xl border border-slate-300 bg-white text-lg font-bold text-slate-900 tabular-nums"
-                    value={opDeliveredQty}
-                    onChange={(e) => setOpDeliveredQty(Number(e.target.value))}
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs sm:text-sm font-bold text-slate-800 mb-1">
-                    Cant. aceptada
-                  </label>
-                  <input
-                    type="number"
-                    inputMode="numeric"
-                    min={0}
-                    max={opDeliveredQty}
-                    className="w-full min-h-[46px] px-3 py-2 rounded-xl border border-slate-300 bg-white text-lg font-bold text-slate-900 tabular-nums"
-                    value={opAcceptedQty}
-                    onChange={(e) => setOpAcceptedQty(Number(e.target.value))}
-                  />
-                </div>
-              </div>
-              <div>
-                <label className="block text-xs sm:text-sm font-bold text-slate-800 mb-1">
-                  Compensación del proveedor
-                </label>
-                <div className="grid grid-cols-2 gap-1.5">
-                  {(
-                    [
-                      { id: 'CREDIT_BALANCE', label: 'Saldo a favor' },
-                      { id: 'PENDING_COMPENSATION', label: 'Pendiente' },
-                      {
-                        id: 'CASH_REFUND_RECEIVED',
-                        label: 'Efectivo recibido',
-                      },
-                      { id: 'PRODUCT_EXCHANGE', label: 'Cambio fruta' },
-                    ] as const
-                  ).map((comp) => (
-                    <button
-                      key={comp.id}
-                      type="button"
-                      onClick={() => setOpCompensationType(comp.id)}
-                      className={`min-h-[42px] px-2.5 py-1.5 rounded-xl border text-xs font-bold transition-colors cursor-pointer ${
-                        opCompensationType === comp.id
-                          ? 'bg-green-50 border-green-600 text-green-950 ring-1 ring-green-600'
-                          : 'bg-white border-slate-300 text-slate-800'
-                      }`}
-                    >
-                      {comp.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </>
-          )}
-
-          {newOpModalType === 'CRATE_MOVEMENT' && (
-            <>
-              <div>
-                <label className="block text-xs sm:text-sm font-bold text-slate-800 mb-1">
-                  Movimiento de canastillas
-                </label>
-                <div className="grid grid-cols-2 gap-1.5">
-                  {(opModalContext === 'SUPPLIER'
-                    ? ([
-                        {
-                          id: 'RECEIVED_FROM_SUPPLIER',
-                          label: 'Recibidas de proveedor',
-                        },
-                        {
-                          id: 'RETURNED_TO_SUPPLIER',
-                          label: 'Devueltas a proveedor',
-                        },
-                      ] as const)
-                    : ([
-                        {
-                          id: 'RETURNED_BY_CLIENT',
-                          label: 'Devueltas por cliente (descuenta deuda)',
-                        },
-                        {
-                          id: 'DELIVERED_TO_CLIENT',
-                          label: 'Entregadas a cliente',
-                        },
-                      ] as const)
-                  ).map((mv) => (
-                    <button
-                      key={mv.id}
-                      type="button"
-                      onClick={() => setOpCrateType(mv.id)}
-                      className={`min-h-[44px] px-2.5 py-1.5 rounded-xl border text-xs font-bold transition-colors cursor-pointer ${
-                        opCrateType === mv.id
-                          ? 'bg-green-50 border-green-600 text-green-950 ring-1 ring-green-600'
-                          : 'bg-white border-slate-300 text-slate-800'
-                      }`}
-                    >
-                      {mv.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <div>
-                <label className="block text-xs sm:text-sm font-bold text-slate-800 mb-1">
-                  Cantidad de canastillas
-                </label>
-                <input
-                  type="number"
-                  inputMode="numeric"
-                  min={1}
-                  className="w-full min-h-[46px] px-3.5 py-2 rounded-xl border border-slate-300 bg-white text-lg font-bold text-slate-900 tabular-nums"
-                  value={opQuantity}
-                  onChange={(e) => setOpQuantity(Number(e.target.value))}
-                />
-              </div>
-            </>
-          )}
-
-          {newOpModalType !== 'CRATE_MOVEMENT' &&
-            newOpModalType !== 'SUPPLIER_RETURN' && (
-              <div>
-                <label className="block text-xs sm:text-sm font-bold text-slate-800 mb-1">
-                  Medio de pago
-                </label>
-                <div
-                  className={`grid gap-2 ${
-                    newOpModalType === 'SALE' ? 'grid-cols-3' : 'grid-cols-2'
-                  }`}
-                >
-                  {(
-                    [
-                      { id: 'CASH', label: 'Efectivo' },
-                      { id: 'TRANSFER', label: 'Transferencia' },
-                      ...(newOpModalType === 'SALE'
-                        ? [{ id: 'CREDIT' as const, label: 'Fiado' }]
-                        : []),
-                    ] as const
-                  ).map((pm) => {
-                    const selected = opPaymentMethod === pm.id;
-                    return (
-                      <button
-                        key={pm.id}
-                        type="button"
-                        onClick={() =>
-                          setOpPaymentMethod(pm.id as PaymentMethod)
-                        }
-                        className={`min-h-[44px] px-2 py-2 rounded-xl border text-xs sm:text-sm font-bold transition-colors cursor-pointer ${
-                          selected
-                            ? 'bg-green-700 border-green-700 text-white shadow-2xs'
-                            : 'bg-white border-slate-300 text-slate-800'
-                        }`}
-                      >
-                        {pm.label}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-
-          {newOpModalType === 'SALE' && opPaymentMethod === 'CREDIT' && (
-            <div>
-              <label className="block text-xs sm:text-sm font-bold text-slate-800 mb-1">
-                Abono inmediato hoy en efectivo ($)
-              </label>
-              <input
-                type="number"
-                inputMode="decimal"
-                min={0}
-                max={opQuantity * opUnitPrice}
-                className="w-full min-h-[44px] px-3 py-1.5 rounded-xl border border-slate-300 bg-white text-base font-bold text-slate-900 tabular-nums"
-                value={opPaidImmediate}
-                onChange={(e) => setOpPaidImmediate(Number(e.target.value))}
-              />
-            </div>
-          )}
-
-          <div>
-            <input
-              type="text"
-              placeholder="Nota opcional (ej: número de recibo o detalle)..."
-              className="w-full min-h-[42px] px-3 py-1.5 rounded-xl border border-slate-300 bg-white text-sm text-slate-900"
-              value={opNotes}
-              onChange={(e) => setOpNotes(e.target.value)}
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-2.5 pt-2 border-t border-slate-100">
-            <button
-              type="button"
-              onClick={() => setNewOpModalType(null)}
-              className="min-h-[48px] px-3 py-2.5 rounded-xl border border-slate-300 bg-white text-slate-700 font-bold text-sm cursor-pointer"
-            >
-              Cancelar
-            </button>
-            <button
-              type="submit"
-              className="min-h-[48px] px-3 py-2.5 rounded-xl bg-green-700 hover:bg-green-800 text-white font-extrabold text-sm shadow-xs cursor-pointer"
-            >
-              Guardar registro
-            </button>
-          </div>
-        </form>
-      </BottomSheet>
-
-      {/* ====================================================================
-          HOJA INFERIOR (BOTTOM SHEET): EDITAR OPERACIÓN O SOLICITAR PERMISO
+          MODAL CENTRADO 7: EDITAR OPERACIÓN O SOLICITAR PERMISO
          ==================================================================== */}
       {editingOp && activeShift && (
         <BottomSheet
@@ -3314,25 +3634,22 @@ export function App() {
             );
 
             return (
-              <form
-                onSubmit={handleConfirmEditOrRequest}
-                className="space-y-3.5"
-              >
-                <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 flex justify-between items-center">
-                  <span className="text-xs sm:text-sm font-medium text-slate-600">
+              <form onSubmit={handleConfirmEditOrRequest} className="space-y-3">
+                <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200 flex justify-between items-center">
+                  <span className="text-xs font-medium text-slate-600">
                     Valor actual:
                   </span>
-                  <strong className="text-base sm:text-lg font-bold text-slate-900 tabular-nums">
+                  <strong className="text-base font-bold text-slate-900 tabular-nums">
                     {formatCOP(editingOp.payload.totalAmount)}
                   </strong>
                 </div>
 
                 {approvedAuth && (
-                  <div className="p-3.5 rounded-xl bg-amber-50 border border-amber-200 space-y-2.5">
-                    <p className="text-xs sm:text-sm font-medium text-amber-950 leading-relaxed">
+                  <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 space-y-2">
+                    <p className="text-xs font-medium text-amber-950 leading-relaxed">
                       “{MANDATORY_EXPIRED_EDIT_WARNING}”.
                     </p>
-                    <label className="flex items-start gap-2.5 cursor-pointer text-xs sm:text-sm font-bold text-amber-950">
+                    <label className="flex items-start gap-2 cursor-pointer text-xs font-bold text-amber-950">
                       <input
                         type="checkbox"
                         className="w-4 h-4 mt-0.5 accent-amber-700 rounded shrink-0"
@@ -3342,14 +3659,14 @@ export function App() {
                         }
                       />
                       <span>
-                        Confirmo que leí la advertencia y verifiqué la información antes de continuar.
+                        Confirmo que leí la advertencia y verifiqué la información.
                       </span>
                     </label>
                   </div>
                 )}
 
                 <div>
-                  <label className="block text-xs sm:text-sm font-bold text-slate-800 mb-1">
+                  <label className="block text-xs font-bold text-slate-800 mb-1">
                     Nuevo valor total ($)
                   </label>
                   <input
@@ -3357,41 +3674,41 @@ export function App() {
                     inputMode="decimal"
                     min={0}
                     disabled={Boolean(approvedAuth)}
-                    className="w-full min-h-[48px] px-3.5 py-2 rounded-xl border border-slate-300 bg-white disabled:bg-slate-100 text-lg font-bold text-slate-900 tabular-nums"
+                    className="w-full min-h-[44px] px-3 py-1.5 rounded-xl border border-slate-300 bg-white disabled:bg-slate-100 text-base font-bold text-slate-900 tabular-nums"
                     value={editNewAmount}
                     onChange={(e) => setEditNewAmount(Number(e.target.value))}
                   />
                 </div>
 
                 <div>
-                  <label className="block text-xs sm:text-sm font-bold text-slate-800 mb-1">
+                  <label className="block text-xs font-bold text-slate-800 mb-1">
                     Motivo obligatorio de la modificación
                   </label>
                   <input
                     type="text"
                     placeholder="Indica por qué necesitas realizar este cambio..."
-                    className="w-full min-h-[46px] px-3.5 py-2 rounded-xl border border-slate-300 bg-white text-sm text-slate-900"
+                    className="w-full min-h-[42px] px-3 py-1.5 rounded-xl border border-slate-300 bg-white text-sm text-slate-900"
                     value={editReason}
                     onChange={(e) => setEditReason(e.target.value)}
                   />
                 </div>
 
-                <div className="grid grid-cols-2 gap-2.5 pt-2 border-t border-slate-100">
+                <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-100">
                   <button
                     type="button"
                     onClick={() => setEditingOp(null)}
-                    className="min-h-[48px] px-3 py-2.5 rounded-xl border border-slate-300 bg-white text-slate-700 font-bold text-sm cursor-pointer"
+                    className="min-h-[44px] rounded-xl border border-slate-300 bg-white text-slate-700 font-bold text-xs sm:text-sm cursor-pointer"
                   >
                     Cancelar
                   </button>
                   <button
                     type="submit"
-                    className={`min-h-[48px] px-3 py-2.5 rounded-xl font-bold text-sm text-white shadow-xs cursor-pointer ${
+                    className={`min-h-[44px] rounded-xl font-bold text-xs sm:text-sm text-white cursor-pointer ${
                       approvedAuth
-                        ? 'bg-blue-600 hover:bg-blue-700'
+                        ? 'bg-blue-600'
                         : win.withinWindow
-                        ? 'bg-green-700 hover:bg-green-800'
-                        : 'bg-amber-600 hover:bg-amber-700'
+                        ? 'bg-green-700'
+                        : 'bg-amber-600'
                     }`}
                   >
                     {approvedAuth
