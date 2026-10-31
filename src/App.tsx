@@ -16,6 +16,7 @@ import {
   Edit3,
   KeyRound,
   Lock,
+  LogIn,
   Package,
   Plus,
   Receipt,
@@ -38,7 +39,8 @@ import {
   NavTabId,
   ResponsivePwaShell,
 } from './components/layout/ResponsivePwaShell';
-import { AuthLoginSheet } from './components/ui/AuthLoginSheet';
+import { LoginScreen } from './components/auth/LoginScreen';
+import { UserProfileModal } from './components/auth/UserProfileModal';
 import { BottomSheet } from './components/ui/BottomSheet';
 import { PwaConnectionSheet } from './components/ui/PwaConnectionSheet';
 import { SearchableSelect } from './components/ui/SearchableSelect';
@@ -122,7 +124,7 @@ export function App() {
   const [isHydrating, setIsHydrating] = useState<boolean>(true);
   const [connectionSheetOpen, setConnectionSheetOpen] =
     useState<boolean>(false);
-  const [authSheetOpen, setAuthSheetOpen] = useState<boolean>(false);
+  const [isProfileModalOpen, setIsProfileModalOpen] = useState<boolean>(false);
 
   // Modales siempre centrados y de altura constante:
   const [closureModalOpen, setClosureModalOpen] = useState<boolean>(false);
@@ -168,7 +170,12 @@ export function App() {
   const [testsPage, setTestsPage] = useState<number>(1);
   const [authReqsPage, setAuthReqsPage] = useState<number>(1);
 
-  const [activeUserId, setActiveUserId] = useState<string>('USR-HELPER-01');
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
+    return localStorage.getItem('rutasync_session_auth') === 'true';
+  });
+  const [activeUserId, setActiveUserId] = useState<string>(() => {
+    return localStorage.getItem('rutasync_session_user') || 'USR-OWNER-01';
+  });
   const [activeTab, setActiveTab] = useState<NavTabId>('OPERATE');
   const [isOnline, setIsOnline] = useState<boolean>(true);
   const [feedback, setFeedback] = useState<{
@@ -176,7 +183,9 @@ export function App() {
     text: string;
   } | null>(null);
 
-  const [activeAccordion, setActiveAccordion] = useState<'REAL_TIME' | 'KPIS' | null>(null);
+  const [activeAccordion, setActiveAccordion] = useState<
+    'REAL_TIME' | 'KPIS' | null
+  >(null);
 
   // Modal de Venta o Gasto abierto desde el botón circular flotante (+)
   const [fabModalType, setFabModalType] = useState<'SALE' | 'EXPENSE' | null>(
@@ -914,13 +923,37 @@ export function App() {
   // No mostrar panel lateral en ninguna vista; toda la conciliación se gestiona en Ruta de Hoy
   const rightSummaryPanel = null;
 
+  if (!isAuthenticated) {
+    return (
+      <LoginScreen
+        users={state.users}
+        initialUserId={activeUserId}
+        onVerifyPin={(uid, pin) =>
+          coreService.authenticateUserWithPin({ userId: uid, pin })
+        }
+        onLoginSuccess={(user) => {
+          setActiveUserId(user.id);
+          setIsAuthenticated(true);
+          localStorage.setItem('rutasync_session_auth', 'true');
+          localStorage.setItem('rutasync_session_user', user.id);
+          setFeedback({
+            type: 'success',
+            text: `Bienvenido al sistema, ${user.name}.`,
+          });
+          refreshState();
+        }}
+      />
+    );
+  }
+
   return (
     <ResponsivePwaShell
       activeTab={activeTab}
       onSelectTab={setActiveTab}
       isOnline={isOnline}
       onOpenConnectionSheet={() => setConnectionSheetOpen(true)}
-      onOpenAuthSheet={() => setAuthSheetOpen(true)}
+      onOpenProfileModal={() => setIsProfileModalOpen(true)}
+      onOpenAuthSheet={() => setIsProfileModalOpen(true)}
       onOpenNotificationsModal={() => setNotificationsModalOpen(true)}
       onOpenQuickSale={() => openFabModal('SALE')}
       onOpenQuickExpense={() => openFabModal('EXPENSE')}
@@ -1035,13 +1068,17 @@ export function App() {
                   </button>
                 </div>
 
-                {/* Acordeón real: Dos títulos uno arriba y otro abajo. Al tocar uno, se expande debajo de su propio título y se contrae el otro */}
+                {/* Acordeón real: Dos títulos uno arriba y otro abajo. Al tocar uno, se expande debajo de su propio título y si ya estaba abierto o se toca de nuevo, se oculta (pudiendo quedar ambos ocultos) */}
                 <div className="space-y-2 pt-1 border-t border-slate-100">
                   {/* Título Acordeón 1: Resumen en Tiempo Real */}
                   <div className="rounded-xl border border-slate-200 overflow-hidden bg-white">
                     <button
                       type="button"
-                      onClick={() => setActiveAccordion((prev) => (prev === 'REAL_TIME' ? null : 'REAL_TIME'))}
+                      onClick={() =>
+                        setActiveAccordion((prev) =>
+                          prev === 'REAL_TIME' ? null : 'REAL_TIME'
+                        )
+                      }
                       className={`w-full px-3.5 py-2.5 text-left flex items-center justify-between font-bold text-xs sm:text-sm transition-colors cursor-pointer ${
                         activeAccordion === 'REAL_TIME'
                           ? 'bg-green-50/80 text-green-950 border-b border-green-200'
@@ -1054,7 +1091,9 @@ export function App() {
                       </div>
                       <ChevronDown
                         className={`w-4 h-4 transition-transform duration-200 ${
-                          activeAccordion === 'REAL_TIME' ? 'rotate-180 text-green-800' : 'text-slate-500'
+                          activeAccordion === 'REAL_TIME'
+                            ? 'rotate-180 text-green-800'
+                            : 'text-slate-500'
                         }`}
                       />
                     </button>
@@ -1111,7 +1150,11 @@ export function App() {
                   <div className="rounded-xl border border-slate-200 overflow-hidden bg-white">
                     <button
                       type="button"
-                      onClick={() => setActiveAccordion((prev) => (prev === 'KPIS' ? null : 'KPIS'))}
+                      onClick={() =>
+                        setActiveAccordion((prev) =>
+                          prev === 'KPIS' ? null : 'KPIS'
+                        )
+                      }
                       className={`w-full px-3.5 py-2.5 text-left flex items-center justify-between font-bold text-xs sm:text-sm transition-colors cursor-pointer ${
                         activeAccordion === 'KPIS'
                           ? 'bg-green-50/80 text-green-950 border-b border-green-200'
@@ -1124,7 +1167,9 @@ export function App() {
                       </div>
                       <ChevronDown
                         className={`w-4 h-4 transition-transform duration-200 ${
-                          activeAccordion === 'KPIS' ? 'rotate-180 text-green-800' : 'text-slate-500'
+                          activeAccordion === 'KPIS'
+                            ? 'rotate-180 text-green-800'
+                            : 'text-slate-500'
                         }`}
                       />
                     </button>
@@ -1175,6 +1220,7 @@ export function App() {
                     )}
                   </div>
                 </div>
+
               </section>
 
               {/* UNA SOLA SECCIÓN UNIFICADA CON 4 TABS */}
@@ -1876,25 +1922,29 @@ export function App() {
 
                 {/* Banner de aviso si está operando un auxiliar en vez del dueño */}
                 {currentUser.role !== 'OWNER' && (
-                  <div className="p-3.5 rounded-xl bg-amber-50 border border-amber-300 text-amber-950 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-                    <div className="flex items-center gap-2.5">
-                      <AlertTriangle className="w-5 h-5 text-amber-700 shrink-0" />
+                  <div className="p-4 rounded-2xl bg-amber-50 border border-amber-300 text-amber-950 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-xs">
+                    <div className="flex items-center gap-3">
+                      <ShieldAlert className="w-5 h-5 text-amber-700 shrink-0" />
                       <div>
                         <div className="font-bold text-xs sm:text-sm">
-                          Sesión actual: {currentUser.name} (Auxiliar)
+                          Acceso Restringido para Auxiliares ({currentUser.name})
                         </div>
                         <div className="text-[11px] sm:text-xs text-amber-900">
-                          Para modificar productos, auxiliares o políticas, debes iniciar con el perfil de <strong>Don Carlos (Dueño)</strong>.
+                          La administración de productos, auxiliares y políticas solo está autorizada para el Dueño.
                         </div>
                       </div>
                     </div>
                     <button
                       type="button"
-                      onClick={() => setAuthSheetOpen(true)}
-                      className="w-full sm:w-auto px-3.5 py-1.5 rounded-xl bg-green-700 hover:bg-green-800 text-white font-bold text-xs shrink-0 flex items-center justify-center gap-1.5 cursor-pointer shadow-xs"
+                      onClick={() => {
+                        setActiveUserId('USR-OWNER-01');
+                        setIsAuthenticated(false);
+                        localStorage.removeItem('rutasync_session_auth');
+                      }}
+                      className="w-full sm:w-auto px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs shrink-0 flex items-center justify-center gap-2 cursor-pointer shadow-xs"
                     >
-                      <KeyRound className="w-3.5 h-3.5" />
-                      <span>Iniciar como Dueño (PIN: 1234)</span>
+                      <LogIn className="w-3.5 h-3.5 text-emerald-400" />
+                      <span>Ingresar como Dueño</span>
                     </button>
                   </div>
                 )}
@@ -2031,7 +2081,7 @@ export function App() {
                           setProdFormSale(32000);
                           setIsProductModalOpen(true);
                         }}
-                        className="px-3 py-1.5 rounded-xl bg-green-700 hover:bg-green-800 text-white font-bold text-xs flex items-center gap-1.5 cursor-pointer shadow-xs"
+                        className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center gap-1.5 cursor-pointer shadow-xs"
                       >
                         <Plus className="w-4 h-4" />
                         <span>Nuevo Producto</span>
@@ -2085,7 +2135,7 @@ export function App() {
                                         setProdFormSale(p.defaultSalePrice);
                                         setIsProductModalOpen(true);
                                       }}
-                                      className="px-2.5 py-1 rounded-lg bg-green-50 hover:bg-green-100 text-green-800 font-bold text-xs border border-green-200 cursor-pointer"
+                                      className="px-2.5 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-bold text-xs border border-emerald-200 cursor-pointer"
                                     >
                                       Editar
                                     </button>
@@ -4217,9 +4267,8 @@ export function App() {
         )}
       </BottomSheet>
 
-
       {/* ====================================================================
-          MODAL CENTRADO: GESTIÓN DE PRODUCTO (CREAR / EDITAR EN MODAL)
+          MODAL CENTRADO: GESTIÓN DE PRODUCTO EN CATÁLOGO (CREAR / EDITAR)
          ==================================================================== */}
       <BottomSheet
         isOpen={isProductModalOpen}
@@ -4233,7 +4282,7 @@ export function App() {
             ? `Modificar precios y abreviación de ${editingProduct.name}`
             : 'Registrar nuevo producto para venta y compra en ruta'
         }
-        icon={<Package className="w-5 h-5 text-green-700" />}
+        icon={<Package className="w-5 h-5 text-emerald-700" />}
       >
         <form
           onSubmit={async (e) => {
@@ -4241,9 +4290,8 @@ export function App() {
             if (currentUser.role !== 'OWNER') {
               setFeedback({
                 type: 'error',
-                text: 'Solo Don Carlos (Dueño) puede modificar productos. Inicia sesión con la llave (PIN: 1234).',
+                text: 'Solo el Dueño (Don Carlos) puede gestionar productos.',
               });
-              setAuthSheetOpen(true);
               return;
             }
             const res = await coreService.saveProductCatalogItem({
@@ -4295,7 +4343,7 @@ export function App() {
                 required
                 maxLength={5}
                 placeholder="Ej: BC, BAN, BV"
-                className="w-full min-h-[44px] px-3 py-2 rounded-xl border border-slate-300 bg-white text-sm font-extrabold uppercase text-green-900 tracking-wider"
+                className="w-full min-h-[44px] px-3 py-2 rounded-xl border border-slate-300 bg-white text-sm font-extrabold uppercase text-emerald-900 tracking-wider"
                 value={prodFormCode}
                 onChange={(e) => setProdFormCode(e.target.value.toUpperCase())}
               />
@@ -4339,7 +4387,7 @@ export function App() {
                 inputMode="decimal"
                 min={0}
                 required
-                className="w-full min-h-[44px] px-3 py-2 rounded-xl border border-slate-300 bg-white text-base font-extrabold tabular-nums text-green-900"
+                className="w-full min-h-[44px] px-3 py-2 rounded-xl border border-slate-300 bg-white text-base font-extrabold tabular-nums text-emerald-900"
                 value={prodFormSale}
                 onChange={(e) => setProdFormSale(Number(e.target.value))}
               />
@@ -4359,7 +4407,7 @@ export function App() {
             </button>
             <button
               type="submit"
-              className="min-h-[46px] px-3 py-2 rounded-xl bg-green-700 hover:bg-green-800 text-white font-bold text-sm shadow-xs cursor-pointer flex items-center justify-center gap-1.5"
+              className="min-h-[46px] px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm shadow-xs cursor-pointer flex items-center justify-center gap-1.5"
             >
               <Check className="w-4 h-4" />
               <span>{editingProduct ? 'Guardar Cambios' : 'Crear Producto'}</span>
@@ -4367,44 +4415,33 @@ export function App() {
           </div>
         </form>
       </BottomSheet>
+
       {/* ====================================================================
-          MODAL CENTRADO 5: CAMBIO DE SESIÓN Y ROL POR PIN
+          MODAL CENTRADO 5: PERFIL DE USUARIO, SEGURIDAD Y CIERRE DE SESIÓN
          ==================================================================== */}
-      <AuthLoginSheet
-        isOpen={authSheetOpen}
-        onClose={() => setAuthSheetOpen(false)}
-        users={state.users}
-        activeUser={currentUser}
-        onAuthenticateUser={(userId) => {
-          setActiveUserId(userId);
-          const u = state.users.find((usr) => usr.id === userId);
+      <UserProfileModal
+        isOpen={isProfileModalOpen}
+        onClose={() => setIsProfileModalOpen(false)}
+        user={currentUser}
+        onLogout={() => {
+          setIsAuthenticated(false);
+          localStorage.removeItem('rutasync_session_auth');
+          setIsProfileModalOpen(false);
           setFeedback({
-            type: 'success',
-            text: `Sesión iniciada como ${u?.name ?? userId}.`,
+            type: 'warning',
+            text: 'Has cerrado la sesión del sistema.',
           });
-          refreshState();
         }}
-        onUpdatePin={async (targetUserId, newPin) => {
+        onUpdatePin={async (newPin) => {
           const res = await coreService.updateUserPin({
             actorUserId: currentUser.id,
-            targetUserId,
+            targetUserId: currentUser.id,
             newPin,
           });
           if (res.ok) {
             refreshState();
           }
           return res;
-        }}
-        onLogout={() => {
-          const helper = state.users.find((u) => u.role !== 'OWNER');
-          if (helper) {
-            setActiveUserId(helper.id);
-          }
-          setFeedback({
-            type: 'warning',
-            text: 'Has cerrado la sesión del perfil. Selecciona un usuario e ingresa el PIN.',
-          });
-          setAuthSheetOpen(true);
         }}
       />
 

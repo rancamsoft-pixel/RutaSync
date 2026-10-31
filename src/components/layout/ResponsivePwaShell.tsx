@@ -29,7 +29,8 @@ export interface ResponsivePwaShellProps {
   onSelectTab: (tab: NavTabId) => void;
   isOnline: boolean;
   onOpenConnectionSheet: () => void;
-  onOpenAuthSheet: () => void;
+  onOpenAuthSheet?: () => void;
+  onOpenProfileModal?: () => void;
   onOpenNotificationsModal: () => void;
   onOpenQuickSale: () => void;
   onOpenQuickExpense: () => void;
@@ -49,6 +50,7 @@ export const ResponsivePwaShell: React.FC<ResponsivePwaShellProps> = ({
   isOnline,
   onOpenConnectionSheet,
   onOpenAuthSheet,
+  onOpenProfileModal,
   onOpenNotificationsModal,
   onOpenQuickSale,
   onOpenQuickExpense,
@@ -67,6 +69,13 @@ export const ResponsivePwaShell: React.FC<ResponsivePwaShellProps> = ({
   // Nombre corto limpio sin paréntesis redundantes para móvil
   const cleanUserName = activeUser.name.replace(/\s*\(.*?\)\s*/g, '').trim();
   const roleLabel = activeUser.role === 'OWNER' ? 'Dueño' : 'Auxiliar';
+  const userInitials = activeUser.name
+    .split(' ')
+    .map((n) => n[0])
+    .slice(0, 2)
+    .join('')
+    .toUpperCase();
+  const handleProfileClick = onOpenProfileModal || onOpenAuthSheet;
 
   const navItems: Array<{
     id: NavTabId;
@@ -185,20 +194,26 @@ export const ResponsivePwaShell: React.FC<ResponsivePwaShellProps> = ({
         <div className="p-3 border-t border-slate-100 space-y-2">
           <button
             type="button"
-            onClick={onOpenAuthSheet}
-            title="Cambiar sesión de usuario con PIN"
-            className="w-full p-3 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-left flex items-center gap-3 transition-colors cursor-pointer"
+            onClick={handleProfileClick}
+            title="Mi Perfil y Seguridad"
+            className="w-full p-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-left flex items-center gap-2.5 transition-colors cursor-pointer"
           >
-            <div className="w-9 h-9 rounded-lg bg-slate-100 text-slate-700 flex items-center justify-center shrink-0">
-              <KeyRound className="w-4 h-4" />
+            <div
+              className={`w-9 h-9 rounded-xl font-black text-xs flex items-center justify-center shrink-0 ${
+                activeUser.role === 'OWNER'
+                  ? 'bg-emerald-700 text-white'
+                  : 'bg-slate-800 text-white'
+              }`}
+            >
+              {userInitials}
             </div>
             {!sidebarCollapsed && (
-              <div className="min-w-0">
+              <div className="min-w-0 flex-1">
                 <div className="text-sm font-bold text-slate-900 truncate">
-                  {activeUser.name}
+                  {cleanUserName}
                 </div>
-                <div className="text-xs text-green-700 font-medium truncate">
-                  Cambiar cuenta / PIN
+                <div className="text-xs text-slate-500 truncate">
+                  {roleLabel} · Mi Perfil
                 </div>
               </div>
             )}
@@ -276,16 +291,15 @@ export const ResponsivePwaShell: React.FC<ResponsivePwaShellProps> = ({
                     </span>
                   )}
                 </div>
-                <div className="flex items-center gap-1 text-xs font-semibold text-green-800 truncate">
-                  <User className="w-3 h-3 text-green-700 shrink-0" />
-                  <span className="truncate">
-                    {cleanUserName} · {roleLabel}
-                  </span>
+                <div className="flex items-center gap-1 text-[11px] font-medium text-slate-500 truncate">
+                  <span>{shiftOpen ? 'Jornada Abierta' : 'Jornada Cerrada'}</span>
+                  <span>·</span>
+                  <span>NPR KLM-456</span>
                 </div>
               </div>
             </div>
 
-            {/* Botones de Campanita (Autorizaciones), Usuario y Conexión */}
+            {/* Botones de Notificaciones, Conexión y Perfil de Usuario */}
             <div className="flex items-center gap-1.5 shrink-0">
               <button
                 type="button"
@@ -308,12 +322,27 @@ export const ResponsivePwaShell: React.FC<ResponsivePwaShellProps> = ({
 
               <button
                 type="button"
-                onClick={onOpenAuthSheet}
-                className="min-h-[40px] px-2.5 sm:px-3 py-1.5 rounded-xl text-xs sm:text-sm font-semibold bg-slate-50 hover:bg-slate-100 text-slate-800 border border-slate-200 flex items-center gap-1.5 transition-colors cursor-pointer"
-                title="Cambiar sesión de usuario con PIN"
+                onClick={handleProfileClick}
+                className="min-h-[40px] px-2 sm:px-2.5 py-1 rounded-xl text-xs sm:text-sm font-semibold bg-slate-50 hover:bg-slate-100 text-slate-800 border border-slate-200 flex items-center gap-1.5 transition-colors cursor-pointer"
+                title={`Mi Perfil: ${cleanUserName} (${roleLabel})`}
               >
-                <KeyRound className="w-4 h-4 text-green-700 shrink-0" />
-                <span className="hidden sm:inline">Usuario</span>
+                <div
+                  className={`w-7 h-7 rounded-lg text-[11px] font-black flex items-center justify-center shrink-0 ${
+                    activeUser.role === 'OWNER'
+                      ? 'bg-emerald-700 text-white'
+                      : 'bg-slate-800 text-white'
+                  }`}
+                >
+                  {userInitials}
+                </div>
+                <div className="hidden sm:flex flex-col text-left leading-tight pr-0.5">
+                  <span className="text-xs font-bold text-slate-900 truncate max-w-[85px]">
+                    {cleanUserName.split(' ')[0]}
+                  </span>
+                  <span className="text-[10px] text-slate-500 font-medium">
+                    {roleLabel}
+                  </span>
+                </div>
               </button>
 
               <button

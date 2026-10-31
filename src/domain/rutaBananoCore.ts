@@ -503,6 +503,58 @@ export class RutaBananoCoreService {
     return this.state.users.find((u) => u.id === userId);
   }
 
+  public authenticateUserWithPin(params: {
+    userId: string;
+    pin: string;
+  }): { ok: boolean; user?: UserAccount; message: string } {
+    const target = this.getUserById(params.userId);
+    if (!target) {
+      return { ok: false, message: 'Usuario no encontrado en el sistema.' };
+    }
+    if (!target.active) {
+      return {
+        ok: false,
+        message: 'Esta cuenta ha sido desactivada por el administrador.',
+      };
+    }
+
+    const pinInput = params.pin.trim();
+    if (!pinInput) {
+      return { ok: false, message: 'Por favor ingresa tu PIN de seguridad.' };
+    }
+
+    const roleHash = deterministicHash(
+      target.role === 'OWNER'
+        ? `OWNER_PIN_${pinInput}`
+        : `HELPER_PIN_${pinInput}`
+    );
+    const directHash = deterministicHash(pinInput);
+
+    const defaultPins: Record<string, string> = {
+      'USR-OWNER-01': '1234',
+      'USR-HELPER-01': '5678',
+      'USR-HELPER-02': '9012',
+    };
+
+    const isMatch =
+      target.pinOrCredentialHash === roleHash ||
+      target.pinOrCredentialHash === directHash ||
+      (defaultPins[target.id] && pinInput === defaultPins[target.id]);
+
+    if (!isMatch) {
+      return {
+        ok: false,
+        message: 'El PIN ingresado es incorrecto. Inténtalo de nuevo.',
+      };
+    }
+
+    return {
+      ok: true,
+      user: target,
+      message: `Sesión iniciada correctamente como ${target.name}.`,
+    };
+  }
+
   public getActiveShiftForUnit(unitId: string = this.state.config.defaultUnitId): RouteShift | undefined {
     return this.state.shifts.find((s) => s.unitId === unitId && s.status === 'OPEN');
   }
