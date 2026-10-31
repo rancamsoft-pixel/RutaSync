@@ -89,30 +89,30 @@ describe('RutaBanano — 15 Pruebas de Aceptación Obligatorias (Sección 11)', 
     const storage = new IndexedDbStorageEngine();
     const core = new RutaBananoCoreService(createDefaultInitialState(), storage);
 
-    // 1. Dueño ingresa con PIN válido
-    const authOwner = core.authenticateUserWithPin({
-      userId: 'USR-OWNER-01',
-      pin: '1234',
+    // 1. Dueño ingresa con usuario/correo y contraseña válida
+    const authOwnerCreds = core.authenticateUserWithCredentials({
+      usernameOrEmail: 'admin',
+      password: '1234',
     });
-    expect(authOwner.ok).toBe(true);
-    expect(authOwner.user?.role).toBe('OWNER');
+    expect(authOwnerCreds.ok).toBe(true);
+    expect(authOwnerCreds.user?.role).toBe('OWNER');
 
-    // 2. Auxiliar ingresa con PIN incorrecto
-    const authHelperBad = core.authenticateUserWithPin({
-      userId: 'USR-HELPER-01',
-      pin: '0000',
+    // 2. Auxiliar ingresa con usuario y contraseña incorrecta
+    const authHelperBad = core.authenticateUserWithCredentials({
+      usernameOrEmail: 'pedro',
+      password: 'wrongpassword',
     });
     expect(authHelperBad.ok).toBe(false);
 
-    // 3. Auxiliar ingresa con PIN correcto
-    const authHelperOk = core.authenticateUserWithPin({
-      userId: 'USR-HELPER-01',
-      pin: '5678',
+    // 3. Auxiliar ingresa con credenciales correctas
+    const authHelperOk = core.authenticateUserWithCredentials({
+      usernameOrEmail: 'pedro@rutasync.com',
+      password: '5678',
     });
     expect(authHelperOk.ok).toBe(true);
     expect(authHelperOk.user?.name).toContain('Pedro');
 
-    // 4. Cambio de PIN del auxiliar y verificación con el nuevo PIN
+    // 4. Cambio de clave/PIN del auxiliar y verificación con la nueva credencial
     const updatePinRes = await core.updateUserPin({
       actorUserId: 'USR-HELPER-01',
       targetUserId: 'USR-HELPER-01',
@@ -120,9 +120,9 @@ describe('RutaBanano — 15 Pruebas de Aceptación Obligatorias (Sección 11)', 
     });
     expect(updatePinRes.ok).toBe(true);
 
-    const authHelperNewPin = core.authenticateUserWithPin({
-      userId: 'USR-HELPER-01',
-      pin: '9988',
+    const authHelperNewPin = core.authenticateUserWithCredentials({
+      usernameOrEmail: 'pedro',
+      password: '9988',
     });
     expect(authHelperNewPin.ok).toBe(true);
   });

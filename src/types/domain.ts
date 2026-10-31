@@ -38,6 +38,8 @@ export interface UserAccount {
   id: string;
   businessId: string;
   name: string;
+  username?: string;
+  email?: string;
   role: Role;
   pinOrCredentialHash: string; // Nunca en texto plano
   active: boolean;             // Desactivar impide nuevas operaciones y conserva historial

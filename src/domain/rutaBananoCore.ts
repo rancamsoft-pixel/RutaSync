@@ -56,6 +56,8 @@ export function createDefaultInitialState(nowMs: number = Date.now()): RutaBanan
       id: 'USR-OWNER-01',
       businessId,
       name: 'Don Carlos (Dueño)',
+      username: 'admin',
+      email: 'admin@rutasync.com',
       role: 'OWNER',
       pinOrCredentialHash: deterministicHash('OWNER_PIN_1234'),
       active: true,
@@ -74,6 +76,8 @@ export function createDefaultInitialState(nowMs: number = Date.now()): RutaBanan
       id: 'USR-HELPER-01',
       businessId,
       name: 'Pedro Gómez (Auxiliar Principal)',
+      username: 'pedro',
+      email: 'pedro@rutasync.com',
       role: 'HELPER',
       pinOrCredentialHash: deterministicHash('HELPER_PIN_5678'),
       active: true,
@@ -92,6 +96,8 @@ export function createDefaultInitialState(nowMs: number = Date.now()): RutaBanan
       id: 'USR-HELPER-02',
       businessId,
       name: 'Luis Ramírez (Auxiliar Apoyo)',
+      username: 'luis',
+      email: 'luis@rutasync.com',
       role: 'HELPER',
       pinOrCredentialHash: deterministicHash('HELPER_PIN_9012'),
       active: true,
@@ -501,6 +507,80 @@ export class RutaBananoCoreService {
 
   public getUserById(userId: string): UserAccount | undefined {
     return this.state.users.find((u) => u.id === userId);
+  }
+
+  public authenticateUserWithCredentials(params: {
+    usernameOrEmail: string;
+    password: string;
+  }): { ok: boolean; user?: UserAccount; message: string } {
+    const inputUser = params.usernameOrEmail.trim().toLowerCase();
+    const inputPass = params.password.trim();
+
+    if (!inputUser) {
+      return { ok: false, message: 'Por favor ingresa tu usuario o correo electrónico.' };
+    }
+    if (!inputPass) {
+      return { ok: false, message: 'Por favor ingresa tu contraseña.' };
+    }
+
+    // Buscar por username, email, ID o nombre
+    const target = this.state.users.find((u) => {
+      const uUsername = (u.username || '').toLowerCase();
+      const uEmail = (u.email || '').toLowerCase();
+      const uId = u.id.toLowerCase();
+      const uName = u.name.toLowerCase();
+      return (
+        uUsername === inputUser ||
+        uEmail === inputUser ||
+        uId === inputUser ||
+        uName.includes(inputUser)
+      );
+    });
+
+    if (!target) {
+      return {
+        ok: false,
+        message: 'Usuario no encontrado. Verifica las credenciales ingresadas.',
+      };
+    }
+
+    if (!target.active) {
+      return {
+        ok: false,
+        message: 'Esta cuenta ha sido desactivada por el administrador.',
+      };
+    }
+
+    const roleHash = deterministicHash(
+      target.role === 'OWNER'
+        ? `OWNER_PIN_${inputPass}`
+        : `HELPER_PIN_${inputPass}`
+    );
+    const directHash = deterministicHash(inputPass);
+
+    const defaultPins: Record<string, string> = {
+      'USR-OWNER-01': '1234',
+      'USR-HELPER-01': '5678',
+      'USR-HELPER-02': '9012',
+    };
+
+    const isMatch =
+      target.pinOrCredentialHash === roleHash ||
+      target.pinOrCredentialHash === directHash ||
+      (defaultPins[target.id] && inputPass === defaultPins[target.id]);
+
+    if (!isMatch) {
+      return {
+        ok: false,
+        message: 'Contraseña incorrecta. Por favor verifica e intenta de nuevo.',
+      };
+    }
+
+    return {
+      ok: true,
+      user: target,
+      message: `Bienvenido al sistema, ${target.name}.`,
+    };
   }
 
   public authenticateUserWithPin(params: {

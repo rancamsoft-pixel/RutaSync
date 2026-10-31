@@ -158,10 +158,10 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
                 </div>
                 <div>
                   <div className="font-bold text-sm text-slate-900">
-                    Cambiar mi PIN de seguridad
+                    Cambiar mi Contraseña / PIN
                   </div>
                   <div className="text-xs text-slate-500">
-                    Actualiza tu código numérico de 4 dígitos
+                    Actualiza tu clave de acceso al sistema
                   </div>
                 </div>
               </div>
@@ -270,3 +270,4 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
     </BottomSheet>
   );
 };
+

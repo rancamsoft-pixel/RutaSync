@@ -926,10 +926,14 @@ export function App() {
   if (!isAuthenticated) {
     return (
       <LoginScreen
-        users={state.users}
-        initialUserId={activeUserId}
-        onVerifyPin={(uid, pin) =>
-          coreService.authenticateUserWithPin({ userId: uid, pin })
+        initialUsername={
+          localStorage.getItem('rutasync_remember_user') || 'admin'
+        }
+        onAuthenticate={(user, pass) =>
+          coreService.authenticateUserWithCredentials({
+            usernameOrEmail: user,
+            password: pass,
+          })
         }
         onLoginSuccess={(user) => {
           setActiveUserId(user.id);
