@@ -325,10 +325,14 @@ export function App() {
 
       try {
         const remote = await coreService.pullFromFirebase();
-        setState({ ...remote });
-        await coreService.firebaseAdapter.syncInitialCollectionsAndRoles(
-          coreService.getState()
-        );
+        if (remote && remote.products && remote.products.length > 0) {
+          setState({ ...remote });
+        } else {
+          // Solo si Cloud Firestore está completamente vacío, inicializar las colecciones base
+          await coreService.firebaseAdapter.syncInitialCollectionsAndRoles(
+            coreService.getState()
+          );
+        }
       } catch {
         // Continúa operando con IndexedDB local si inicia sin cobertura móvil
       }
