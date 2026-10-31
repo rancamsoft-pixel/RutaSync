@@ -1,4 +1,4 @@
-const CACHE_NAME = 'rutabanano-offline-v1';
+const CACHE_NAME = 'rutabanano-offline-v3';
 const CORE_ASSETS = [
   '/',
   '/index.html',
@@ -31,9 +31,11 @@ self.addEventListener('activate', (event) => {
 
 self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return;
-  event.respondWith(
-    caches.match(event.request).then((cachedResponse) => {
-      const fetchPromise = fetch(event.request)
+
+  // Para navegaciones (cargar páginas /index.html), estrategia Network-First con fallback a Caché offline
+  if (event.request.mode === 'navigate') {
+    event.respondWith(
+      fetch(event.request)
         .then((networkResponse) => {
           if (networkResponse && networkResponse.status === 200) {
             const copy = networkResponse.clone();
@@ -41,9 +43,23 @@ self.addEventListener('fetch', (event) => {
           }
           return networkResponse;
         })
-        .catch(() => cachedResponse);
-      return cachedResponse || fetchPromise;
-    })
+        .catch(() => caches.match('/index.html'))
+    );
+    return;
+  }
+
+  // Para recursos estáticos: Network-First con actualización y fallback a caché
+  event.respondWith(
+    fetch(event.request)
+      .then((networkResponse) => {
+        if (networkResponse && networkResponse.status === 200) {
+          const copy = networkResponse.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
+        }
+        return networkResponse;
+      })
+      .catch(() => caches.match(event.request))
   );
 });
+
 
