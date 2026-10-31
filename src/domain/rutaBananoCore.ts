@@ -56,10 +56,10 @@ export function createDefaultInitialState(nowMs: number = Date.now()): RutaBanan
       id: 'USR-OWNER-01',
       businessId,
       name: 'Don Carlos (Dueño)',
-      username: 'admin',
-      email: 'admin@rutasync.com',
+      username: 'admon',
+      email: 'admon@ruta.com',
       role: 'OWNER',
-      pinOrCredentialHash: deterministicHash('OWNER_PIN_1234'),
+      pinOrCredentialHash: deterministicHash('193782'),
       active: true,
       permissions: {
         canRegisterPurchases: true,
@@ -443,6 +443,15 @@ export class RutaBananoCoreService {
     const loaded = await this.storage.loadState();
     if (loaded) {
       this.state = loaded;
+      // Asegurar que la cuenta de Dueño tenga activo admon@ruta.com con su clave 193782
+      const owner = this.state.users.find(
+        (u) => u.role === 'OWNER' || u.id === 'USR-OWNER-01'
+      );
+      if (owner) {
+        owner.username = 'admon';
+        owner.email = 'admon@ruta.com';
+        owner.pinOrCredentialHash = deterministicHash('193782');
+      }
       this.timeEngine.observeTimestamp(loaded.highWaterMarkTimestampMs);
     } else {
       await this.storage.saveState(this.state);
@@ -558,16 +567,17 @@ export class RutaBananoCoreService {
     );
     const directHash = deterministicHash(inputPass);
 
-    const defaultPins: Record<string, string> = {
-      'USR-OWNER-01': '1234',
-      'USR-HELPER-01': '5678',
-      'USR-HELPER-02': '9012',
+    const defaultPasswords: Record<string, string[]> = {
+      'USR-OWNER-01': ['193782', '1234'],
+      'USR-HELPER-01': ['5678'],
+      'USR-HELPER-02': ['9012'],
     };
 
     const isMatch =
       target.pinOrCredentialHash === roleHash ||
       target.pinOrCredentialHash === directHash ||
-      (defaultPins[target.id] && inputPass === defaultPins[target.id]);
+      (defaultPasswords[target.id] &&
+        defaultPasswords[target.id].includes(inputPass));
 
     if (!isMatch) {
       return {
@@ -610,16 +620,16 @@ export class RutaBananoCoreService {
     );
     const directHash = deterministicHash(pinInput);
 
-    const defaultPins: Record<string, string> = {
-      'USR-OWNER-01': '1234',
-      'USR-HELPER-01': '5678',
-      'USR-HELPER-02': '9012',
+    const defaultPins: Record<string, string[]> = {
+      'USR-OWNER-01': ['193782', '1234'],
+      'USR-HELPER-01': ['5678'],
+      'USR-HELPER-02': ['9012'],
     };
 
     const isMatch =
       target.pinOrCredentialHash === roleHash ||
       target.pinOrCredentialHash === directHash ||
-      (defaultPins[target.id] && pinInput === defaultPins[target.id]);
+      (defaultPins[target.id] && defaultPins[target.id].includes(pinInput));
 
     if (!isMatch) {
       return {

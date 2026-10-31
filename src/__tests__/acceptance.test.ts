@@ -91,11 +91,18 @@ describe('RutaBanano — 15 Pruebas de Aceptación Obligatorias (Sección 11)', 
 
     // 1. Dueño ingresa con usuario/correo y contraseña válida
     const authOwnerCreds = core.authenticateUserWithCredentials({
-      usernameOrEmail: 'admin',
-      password: '1234',
+      usernameOrEmail: 'admon@ruta.com',
+      password: '193782',
     });
     expect(authOwnerCreds.ok).toBe(true);
     expect(authOwnerCreds.user?.role).toBe('OWNER');
+
+    // Dueño alternativo con usuario alias
+    const authOwnerAlias = core.authenticateUserWithCredentials({
+      usernameOrEmail: 'admon',
+      password: '193782',
+    });
+    expect(authOwnerAlias.ok).toBe(true);
 
     // 2. Auxiliar ingresa con usuario y contraseña incorrecta
     const authHelperBad = core.authenticateUserWithCredentials({

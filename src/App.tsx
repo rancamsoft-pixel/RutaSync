@@ -927,7 +927,7 @@ export function App() {
     return (
       <LoginScreen
         initialUsername={
-          localStorage.getItem('rutasync_remember_user') || 'admin'
+          localStorage.getItem('rutasync_remember_user') || 'admon@ruta.com'
         }
         onAuthenticate={(user, pass) =>
           coreService.authenticateUserWithCredentials({

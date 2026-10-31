@@ -28,7 +28,11 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
   onLoginSuccess,
   onAuthenticate,
 }) => {
-  const [username, setUsername] = useState<string>(initialUsername);
+  const [username, setUsername] = useState<string>(
+    initialUsername ||
+      localStorage.getItem('rutasync_remember_user') ||
+      'admon@ruta.com'
+  );
   const [password, setPassword] = useState<string>('');
   const [showPassword, setShowPassword] = useState<boolean>(false);
   const [rememberMe, setRememberMe] = useState<boolean>(true);
@@ -130,7 +134,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                   type="text"
                   autoComplete="username"
                   required
-                  placeholder="admin o usuario corporativo"
+                  placeholder="admon@ruta.com"
                   className="w-full min-h-[48px] pl-11 pr-4 py-2.5 rounded-2xl border border-slate-300 bg-slate-50/60 text-slate-900 text-sm font-semibold placeholder:text-slate-400 placeholder:font-normal focus:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-600 focus:border-emerald-600 transition-all"
                   value={username}
                   onChange={(e) => {
@@ -257,17 +261,17 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                 <div className="grid grid-cols-2 gap-2">
                   <button
                     type="button"
-                    onClick={() => handleFillDemo('admin', '1234')}
+                    onClick={() => handleFillDemo('admon@ruta.com', '193782')}
                     className="p-2 rounded-xl bg-white border border-slate-200 hover:border-emerald-500 hover:bg-emerald-50/50 text-left transition-colors cursor-pointer"
                   >
                     <div className="font-bold text-slate-900 flex items-center justify-between">
-                      <span>Dueño</span>
+                      <span>Dueño / Admin</span>
                       <span className="text-[10px] text-emerald-700 bg-emerald-100 px-1 rounded font-extrabold">
                         Auto-llenar
                       </span>
                     </div>
                     <div className="text-slate-500 text-[11px] mt-0.5">
-                      User: <strong>admin</strong> · Clave: <strong>1234</strong>
+                      <strong>admon@ruta.com</strong> · Clave: <strong>193782</strong>
                     </div>
                   </button>
 
