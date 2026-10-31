@@ -334,10 +334,6 @@ export function App() {
       }
     });
 
-    runAll15MandatoryAcceptanceTests().then((res) => {
-      setTestResults(res.results);
-    });
-
     const timer = setInterval(() => {
       setClockTick((t) => t + 1);
     }, 3000);
